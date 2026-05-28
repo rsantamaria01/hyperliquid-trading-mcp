@@ -1,24 +1,22 @@
-# docker-compose.yml — runs the MCP server as a long-lived service exposing
-# HTTP/SSE on http://localhost:8000/sse. Plugins/clients connect via URL.
+# docker-compose.yml — long-lived MCP server on http://localhost:8000/sse.
 #
 # Quick start:
 #   cp .env.example .env        # fill in HYPERLIQUID_PRIVATE_KEY + VAULT_ADDRESS
 #   docker compose up -d
-#   curl http://localhost:8000/sse   # smoke test the SSE endpoint
+#   curl -i http://localhost:8000/sse   # 200 = healthy
 #
-# All runtime config (risk caps, network, LIVE_TRADING) lives in /data/settings.json
-# inside a named volume (`hyperliquid-mcp-data`). Change settings via MCP tools at
-# runtime — they persist across restarts.
+# Runtime config (risk caps, network, live_trading) lives in /data/settings.json
+# inside the named volume `hyperliquid-mcp-data`. Edit it via MCP tools at
+# runtime — changes persist across `docker compose restart` and `up -d` rebuilds.
 
 services:
-
   mcp:
     build: .
     image: rsantamaria01/hyperliquid-trading-mcp:latest
     container_name: hyperliquid-trading-mcp
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8000:8000"   # bind to localhost only — don't expose this externally
+      - "127.0.0.1:8000:8000"   # localhost only — don't expose externally
     env_file:
       - .env
     environment:
@@ -34,20 +32,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-
-  # Optional: run once attached for debugging
-  # docker compose run --rm mcp-debug
-  mcp-debug:
-    extends:
-      service: mcp
-    profiles: ["debug"]
-    container_name: hyperliquid-trading-mcp-debug
-    restart: "no"
-    ports: []
-    environment:
-      MCP_TRANSPORT: stdio
-    stdin_open: true
-    tty: true
 
 volumes:
   hyperliquid-mcp-data:
