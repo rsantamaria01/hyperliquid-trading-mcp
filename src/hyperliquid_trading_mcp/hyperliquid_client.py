@@ -17,6 +17,8 @@ from hyperliquid.exchange import Exchange
 from hyperliquid.info import Info
 from hyperliquid.utils import constants
 
+from . import settings
+
 
 class HyperliquidClient:
     def __init__(self) -> None:
@@ -25,7 +27,8 @@ class HyperliquidClient:
             raise RuntimeError("HYPERLIQUID_PRIVATE_KEY env var is required (agent wallet signer key)")
         self.wallet = Account.from_key(priv)
 
-        network = (os.getenv("HYPERLIQUID_NETWORK") or "mainnet").lower()
+        # Network now lives in settings (persistent), env can still override for ops.
+        network = (os.getenv("HYPERLIQUID_NETWORK") or settings.get("network") or "mainnet").lower()
         self.base_url = os.getenv("HYPERLIQUID_BASE_URL") or (
             getattr(constants, "TESTNET_API_URL", constants.MAINNET_API_URL)
             if network == "testnet"
@@ -315,3 +318,119 @@ class HyperliquidClient:
             return {"status": "ok", "cancelled": count}
         except Exception as e:
             return {"status": "error", "message": str(e)}
+
+    # ---------- order management (modify, status, update_leverage) ----------
+    async def modify_order(
+        self,
+        asset: str,
+        oid: int,
+        is_buy: bool,
+        size: float,
+        limit_price: float,
+        tif: str = "Gtc",
+        reduce_only: bool = False,
+    ) -> Any:
+        """Modify an existing resting order without cancel+replace."""
+        size = await self.round_size(asset, size)
+        limit_price = await self.round_price(asset, limit_price)
+        modify_req = {
+            "oid": oid,
+            "order": {
+                "coin": asset,
+                "is_buy": is_buy,
+                "sz": size,
+                "limit_px": limit_price,
+                "order_type": {"limit": {"tif": tif}},
+                "reduce_only": reduce_only,
+            },
+        }
+        return await self._run(self.exchange.bulk_modify_orders_new, [modify_req])
+
+    async def get_order_status(self, oid: int) -> Any:
+        """Return status of a single order by id (filled, resting, cancelled, etc.)."""
+        return await self._run(self.info.query_order_by_oid, self.query_address, oid)
+
+    async def update_leverage(self, asset: str, leverage: int, is_cross: bool = True) -> dict:
+        try:
+            resp = await self._run(self.exchange.update_leverage, int(leverage), asset, is_cross)
+            return {"status": "ok", "response": resp}
+        except Exception as e:
+            return {"status": "error", "reason": str(e)}
+
+    # ---------- market depth & trades ----------
+    async def get_order_book(self, asset: str, depth: int = 20) -> dict:
+        """Order book — top `depth` levels of bids and asks."""
+        l2 = await self._run(self.info.l2_snapshot, asset)
+        levels = l2.get("levels") if isinstance(l2, dict) else None
+        bids, asks = [], []
+        if isinstance(levels, list) and len(levels) >= 2:
+            bids = [{"px": float(x["px"]), "sz": float(x["sz"]), "n": int(x.get("n", 0))} for x in levels[0][:depth]]
+            asks = [{"px": float(x["px"]), "sz": float(x["sz"]), "n": int(x.get("n", 0))} for x in levels[1][:depth]]
+        return {"asset": asset, "bids": bids, "asks": asks, "depth": depth}
+
+    async def get_recent_trades(self, asset: str, limit: int = 50) -> list[dict]:
+        """Recent trades on the asset (public tape)."""
+        try:
+            trades = await self._run(self.info.post, "/info", {"type": "recentTrades", "coin": asset})
+            if isinstance(trades, list):
+                return trades[-limit:]
+            return []
+        except Exception:
+            return []
+
+    # ---------- funding ----------
+    async def get_user_funding(self, start_time_ms: int | None = None, end_time_ms: int | None = None) -> list[dict]:
+        """User's funding payment history. Defaults to last 7 days."""
+        end_time_ms = end_time_ms or int(time.time() * 1000)
+        start_time_ms = start_time_ms or (end_time_ms - 7 * 86_400_000)
+        try:
+            return await self._run(
+                self.info.post, "/info",
+                {"type": "userFunding", "user": self.query_address,
+                 "startTime": start_time_ms, "endTime": end_time_ms},
+            ) or []
+        except Exception:
+            return []
+
+    async def get_historical_funding(self, asset: str, start_time_ms: int | None = None, end_time_ms: int | None = None) -> list[dict]:
+        """Funding rate history for `asset`. Defaults to last 7 days."""
+        end_time_ms = end_time_ms or int(time.time() * 1000)
+        start_time_ms = start_time_ms or (end_time_ms - 7 * 86_400_000)
+        try:
+            return await self._run(
+                self.info.post, "/info",
+                {"type": "fundingHistory", "coin": asset,
+                 "startTime": start_time_ms, "endTime": end_time_ms},
+            ) or []
+        except Exception:
+            return []
+
+    # ---------- vaults ----------
+    async def get_vault_details(self, vault_address: str) -> dict:
+        try:
+            return await self._run(
+                self.info.post, "/info",
+                {"type": "vaultDetails", "vaultAddress": vault_address},
+            ) or {}
+        except Exception as e:
+            return {"error": str(e)}
+
+    async def get_vault_performance(self, vault_address: str) -> dict:
+        try:
+            return await self._run(
+                self.info.post, "/info",
+                {"type": "vaultPerformance", "vaultAddress": vault_address},
+            ) or {}
+        except Exception as e:
+            return {"error": str(e)}
+
+    # ---------- meta ----------
+    async def get_server_time(self) -> dict:
+        """Round-trip time + server timestamp (for clock-skew sanity checks)."""
+        t0 = time.time() * 1000
+        try:
+            resp = await self._run(self.info.post, "/info", {"type": "meta"})
+            t1 = time.time() * 1000
+            return {"local_ms": int(t1), "rtt_ms": round(t1 - t0, 1), "meta_ok": bool(resp)}
+        except Exception as e:
+            return {"local_ms": int(time.time() * 1000), "error": str(e)}

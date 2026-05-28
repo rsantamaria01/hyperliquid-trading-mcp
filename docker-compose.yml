@@ -1,37 +1,54 @@
-# docker-compose.yml — local dev orchestration for the MCP server.
+# docker-compose.yml — runs the MCP server as a long-lived service exposing
+# HTTP/SSE on http://localhost:8000/sse. Plugins/clients connect via URL.
 #
-# Usage:
-#   docker compose build              # build the image
-#   docker compose run --rm mcp       # start the MCP server attached to stdio (for testing)
-#   docker compose up -d mcp-daemon   # run as a long-lived service (if you want it always up)
+# Quick start:
+#   cp .env.example .env        # fill in HYPERLIQUID_PRIVATE_KEY + VAULT_ADDRESS
+#   docker compose up -d
+#   curl http://localhost:8000/sse   # smoke test the SSE endpoint
 #
-# The MCP server speaks stdio — there's no HTTP port to map. For Claude Code /
-# Cowork to connect, plugin.json invokes `docker run` directly with -i.
+# All runtime config (risk caps, network, LIVE_TRADING) lives in /data/settings.json
+# inside a named volume (`hyperliquid-mcp-data`). Change settings via MCP tools at
+# runtime — they persist across restarts.
 
 services:
 
-  # Interactive mode — start the server attached to your terminal's stdio.
-  # Mostly useful for smoke-testing that the server boots and registers tools.
   mcp:
     build: .
     image: rsantamaria01/hyperliquid-trading-mcp:latest
     container_name: hyperliquid-trading-mcp
-    stdin_open: true
-    tty: false
-    env_file:
-      - .env
-    restart: "no"
-
-  # Daemon mode — keep the container running in the background. Useful for
-  # `docker exec -i hyperliquid-trading-mcp hyperliquid-trading-mcp` style
-  # invocations from a plugin that wants a persistent process.
-  mcp-daemon:
-    build: .
-    image: rsantamaria01/hyperliquid-trading-mcp:latest
-    container_name: hyperliquid-trading-mcp-daemon
-    stdin_open: true
-    tty: false
-    env_file:
-      - .env
     restart: unless-stopped
-    command: ["sleep", "infinity"]
+    ports:
+      - "127.0.0.1:8000:8000"   # bind to localhost only — don't expose this externally
+    env_file:
+      - .env
+    environment:
+      MCP_TRANSPORT: sse
+      MCP_HTTP_HOST: 0.0.0.0
+      MCP_HTTP_PORT: 8000
+      HYPERLIQUID_SETTINGS_PATH: /data/settings.json
+    volumes:
+      - hyperliquid-mcp-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/sse', timeout=2)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Optional: run once attached for debugging
+  # docker compose run --rm mcp-debug
+  mcp-debug:
+    extends:
+      service: mcp
+    profiles: ["debug"]
+    container_name: hyperliquid-trading-mcp-debug
+    restart: "no"
+    ports: []
+    environment:
+      MCP_TRANSPORT: stdio
+    stdin_open: true
+    tty: true
+
+volumes:
+  hyperliquid-mcp-data:
+    name: hyperliquid-mcp-data

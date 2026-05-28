@@ -1,54 +1,61 @@
-"""Risk management — all safety guards enforced in code, not LLM prompts.
+"""Risk manager — all safety guards enforced in code, not LLM prompts.
 
-Adapted from the upstream repo. Claude (acting through MCP tools) cannot
-override these limits: they run inside every trade tool before the order
-hits the exchange.
+Reads risk caps from the persistent settings layer (settings.py), NOT env vars,
+so the user can change them at runtime via the update_settings MCP tool and the
+changes survive a container restart.
+
+The LLM cannot override these limits: they run inside every order tool before
+the SDK call hits Hyperliquid.
 """
 
 from __future__ import annotations
 
 import logging
-import os
 from datetime import datetime, timezone
 
-
-def _f(name: str, default: float) -> float:
-    raw = os.getenv(name)
-    if raw is None or raw.strip() == "":
-        return default
-    try:
-        return float(raw)
-    except ValueError:
-        return default
-
-
-def _i(name: str, default: int) -> int:
-    raw = os.getenv(name)
-    if raw is None or raw.strip() == "":
-        return default
-    try:
-        return int(raw)
-    except ValueError:
-        return default
+from . import settings
 
 
 class RiskManager:
     def __init__(self) -> None:
-        self.max_position_pct = _f("MAX_POSITION_PCT", 10)
-        self.max_loss_per_position_pct = _f("MAX_LOSS_PER_POSITION_PCT", 20)
-        self.max_leverage = _f("MAX_LEVERAGE", 10)
-        self.max_total_exposure_pct = _f("MAX_TOTAL_EXPOSURE_PCT", 50)
-        self.daily_loss_circuit_breaker_pct = _f("DAILY_LOSS_CIRCUIT_BREAKER_PCT", 10)
-        self.mandatory_sl_pct = _f("MANDATORY_SL_PCT", 5)
-        self.max_concurrent_positions = _i("MAX_CONCURRENT_POSITIONS", 10)
-        self.min_balance_reserve_pct = _f("MIN_BALANCE_RESERVE_PCT", 20)
-
         self.daily_high_value: float | None = None
         self.daily_high_date = None
         self.circuit_breaker_active = False
         self.initial_balance: float | None = None
 
-    # ---- helpers ----
+    # ---- live settings accessors (re-read every check so runtime updates take effect) ----
+    @property
+    def max_position_pct(self) -> float:
+        return float(settings.get("max_position_pct") or 10.0)
+
+    @property
+    def max_loss_per_position_pct(self) -> float:
+        return float(settings.get("max_loss_per_position_pct") or 20.0)
+
+    @property
+    def max_leverage(self) -> int:
+        return int(settings.get("max_leverage") or 10)
+
+    @property
+    def max_total_exposure_pct(self) -> float:
+        return float(settings.get("max_total_exposure_pct") or 50.0)
+
+    @property
+    def daily_loss_circuit_breaker_pct(self) -> float:
+        return float(settings.get("daily_loss_circuit_breaker_pct") or 10.0)
+
+    @property
+    def mandatory_sl_pct(self) -> float:
+        return float(settings.get("mandatory_sl_pct") or 5.0)
+
+    @property
+    def max_concurrent_positions(self) -> int:
+        return int(settings.get("max_concurrent_positions") or 10)
+
+    @property
+    def min_balance_reserve_pct(self) -> float:
+        return float(settings.get("min_balance_reserve_pct") or 20.0)
+
     def _reset_daily_if_needed(self, account_value: float) -> None:
         today = datetime.now(timezone.utc).date()
         if self.daily_high_date != today:
@@ -62,7 +69,6 @@ class RiskManager:
         if self.initial_balance is None and balance > 0:
             self.initial_balance = balance
 
-    # ---- individual checks ----
     def check_position_size(self, alloc_usd, account_value):
         if account_value <= 0:
             return False, "Account value is zero or negative"
@@ -144,7 +150,6 @@ class RiskManager:
         return to_close
 
     def validate_trade(self, trade, account_state):
-        # Normalize action — accept buy/sell/long/short in any case
         raw_action = str(trade.get("action", "hold")).strip().lower()
         action_map = {"buy": "buy", "long": "buy", "sell": "sell", "short": "sell", "hold": "hold"}
         action = action_map.get(raw_action, raw_action)
