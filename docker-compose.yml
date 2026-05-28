@@ -1,0 +1,37 @@
+# docker-compose.yml — local dev orchestration for the MCP server.
+#
+# Usage:
+#   docker compose build              # build the image
+#   docker compose run --rm mcp       # start the MCP server attached to stdio (for testing)
+#   docker compose up -d mcp-daemon   # run as a long-lived service (if you want it always up)
+#
+# The MCP server speaks stdio — there's no HTTP port to map. For Claude Code /
+# Cowork to connect, plugin.json invokes `docker run` directly with -i.
+
+services:
+
+  # Interactive mode — start the server attached to your terminal's stdio.
+  # Mostly useful for smoke-testing that the server boots and registers tools.
+  mcp:
+    build: .
+    image: rsantamaria01/hyperliquid-trading-mcp:latest
+    container_name: hyperliquid-trading-mcp
+    stdin_open: true
+    tty: false
+    env_file:
+      - .env
+    restart: "no"
+
+  # Daemon mode — keep the container running in the background. Useful for
+  # `docker exec -i hyperliquid-trading-mcp hyperliquid-trading-mcp` style
+  # invocations from a plugin that wants a persistent process.
+  mcp-daemon:
+    build: .
+    image: rsantamaria01/hyperliquid-trading-mcp:latest
+    container_name: hyperliquid-trading-mcp-daemon
+    stdin_open: true
+    tty: false
+    env_file:
+      - .env
+    restart: unless-stopped
+    command: ["sleep", "infinity"]

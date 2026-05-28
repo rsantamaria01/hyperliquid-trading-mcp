@@ -1,0 +1,31 @@
+[project]
+name = "hyperliquid-trading-mcp"
+version = "0.1.0"
+description = "MCP server for Hyperliquid perpetual futures trading. Hard-coded risk guards, leverage enforcement, bracket orders. Inspired by edkdev/hyperliquid-mcp with risk management adapted from sanketagarwal/hyperliquid-trading-agent."
+authors = [{ name = "Raul Santamaria" }]
+license = { text = "MIT" }
+readme = "README.md"
+requires-python = ">=3.10"
+keywords = ["hyperliquid", "mcp", "trading", "perp", "futures", "crypto"]
+dependencies = [
+  "mcp>=1.0.0",
+  "hyperliquid-python-sdk>=0.20.0,<0.21.0",
+  "eth-account>=0.13.0",
+  "python-dotenv>=1.0.0",
+  "websocket-client>=1.6.0",
+]
+
+[project.scripts]
+hyperliquid-trading-mcp = "hyperliquid_trading_mcp.server:main"
+
+[project.urls]
+Homepage = "https://github.com/rsantamaria01/hyperliquid-trading-mcp"
+Issues = "https://github.com/rsantamaria01/hyperliquid-trading-mcp/issues"
+"Inspired by" = "https://github.com/edkdev/hyperliquid-mcp"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hyperliquid_trading_mcp"]
