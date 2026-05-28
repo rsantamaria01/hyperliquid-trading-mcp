@@ -59,48 +59,27 @@ Required env vars (in `.env` or your host env):
 - `HYPERLIQUID_PRIVATE_KEY` — **agent wallet** private key (signer only, no funds). Create one at app.hyperliquid.xyz → Settings → API Wallets.
 - `HYPERLIQUID_VAULT_ADDRESS` — **main wallet** address (the funded one).
 
-Optional:
+Optional env overrides (otherwise everything below is configured via MCP `update_settings` tool and persisted to the volume):
 
-- `LIVE_TRADING=true` — enable real orders. Default `false` (dry-run).
-- `HYPERLIQUID_NETWORK=testnet` — use testnet. Default `mainnet`.
-- Risk caps: `MAX_POSITION_PCT`, `MAX_LEVERAGE`, `MAX_TOTAL_EXPOSURE_PCT`, `DAILY_LOSS_CIRCUIT_BREAKER_PCT`, `MANDATORY_SL_PCT`, `MAX_CONCURRENT_POSITIONS`, `MIN_BALANCE_RESERVE_PCT`, `MAX_LOSS_PER_POSITION_PCT`. See `.env.example` for defaults.
+- `LIVE_TRADING=false` — emergency kill-switch that beats `settings.json`. Useful if the file accidentally has `live_trading: true` and you need to disable it before the next deploy.
+- `HYPERLIQUID_NETWORK=testnet` — overrides `settings.network`.
+- `HYPERLIQUID_SETTINGS_PATH=/data/settings.json` — change the settings file location.
+
+All other config (risk caps, `live_trading`, network) lives in `/data/settings.json` and is editable at runtime via the `update_settings` MCP tool. No restart needed.
 
 ## Connecting from an MCP client
 
+The server speaks **HTTP/SSE on `http://localhost:8000/sse`**. Add it to your MCP client config:
+
 ### Claude Code / Cowork plugin
 
-Add to your plugin's `plugin.json`:
+In `plugin.json`:
 
 ```json
 {
   "mcpServers": {
     "hyperliquid-trading": {
-      "command": "docker",
-      "args": [
-        "run", "--rm", "-i",
-        "--env-file", "${HOME}/.config/hyperliquid-mcp/.env",
-        "rsantamaria01/hyperliquid-trading-mcp:latest"
-      ]
-    }
-  }
-}
-```
-
-Or via `uvx` from git (no Docker required):
-
-```json
-{
-  "mcpServers": {
-    "hyperliquid-trading": {
-      "command": "uvx",
-      "args": [
-        "--from",
-        "git+https://github.com/rsantamaria01/hyperliquid-trading-mcp",
-        "hyperliquid-trading-mcp"
-      ],
-      "env": {
-        "HYPERLIQUID_PLUGIN_ENV": "${HOME}/.config/hyperliquid-mcp/.env"
-      }
+      "url": "http://localhost:8000/sse"
     }
   }
 }
@@ -114,13 +93,35 @@ Edit `~/.config/Claude/claude_desktop_config.json`:
 {
   "mcpServers": {
     "hyperliquid-trading": {
-      "command": "uvx",
-      "args": ["--from", "git+https://github.com/rsantamaria01/hyperliquid-trading-mcp", "hyperliquid-trading-mcp"],
-      "env": {
-        "HYPERLIQUID_PRIVATE_KEY": "0x...",
-        "HYPERLIQUID_VAULT_ADDRESS": "0x...",
-        "LIVE_TRADING": "false"
-      }
+      "url": "http://localhost:8000/sse"
+    }
+  }
+}
+```
+
+The server already has your keys (from its `.env`) and persistent settings (from the Docker volume), so no `env` block is needed on the client side. Plugin = transport pointer only.
+
+### Stdio fallback (if your client doesn't support SSE URLs)
+
+If your MCP client only accepts stdio servers, override the transport at container start:
+
+```yaml
+# docker-compose.override.yml
+services:
+  mcp:
+    environment:
+      MCP_TRANSPORT: stdio
+    ports: []           # no HTTP port in stdio mode
+```
+
+Then have the client spawn the server via `docker exec`:
+
+```json
+{
+  "mcpServers": {
+    "hyperliquid-trading": {
+      "command": "docker",
+      "args": ["exec", "-i", "hyperliquid-trading-mcp", "hyperliquid-trading-mcp"]
     }
   }
 }
@@ -128,16 +129,18 @@ Edit `~/.config/Claude/claude_desktop_config.json`:
 
 ## Tool surface
 
-22 MCP tools across:
+**31 MCP tools.** Highlights:
 
-- Market data: `get_current_price`, `get_candles`, `get_market_context`
-- Account: `get_account_state`, `get_open_orders`, `get_recent_fills`
-- Risk: `get_risk_limits`, `check_losing_positions`, `validate_trade`
-- Orders: `place_market_order`, `place_limit_order` (with optional brackets), `close_position`, `force_close_losing_positions`, `set_stop_loss`, `set_take_profit`, `set_leverage`, `cancel_order`, `cancel_all_orders`
-- Setup: `link_env_file`, `unlink_env_file`, `get_setup_status`
-- Meta: `trading_mode`
+- **Settings (persistent)**: `get_settings`, `update_settings`, `reset_settings`
+- **Market data**: `get_current_price`, `get_candles`, `get_market_context`, `get_order_book`, `get_recent_trades`
+- **Account**: `get_account_state`, `get_open_orders`, `get_recent_fills`, `get_order_status`
+- **Funding**: `get_user_funding`, `get_historical_funding`
+- **Vaults**: `get_vault_details`, `get_vault_performance`
+- **Risk**: `get_risk_limits`, `check_losing_positions`, `validate_trade`
+- **Orders**: `place_market_order`, `place_limit_order` (with brackets), `modify_order`, `close_position`, `force_close_losing_positions`, `set_stop_loss`, `set_take_profit`, `set_leverage`, `cancel_order`, `cancel_all_orders`
+- **Meta**: `trading_mode`, `get_server_time`
 
-Each order tool checks `LIVE_TRADING`. In dry-run it returns a simulated response — safe for testing skills/prompts without spending USDC.
+Each order tool reads the live `live_trading` setting. In dry-run it returns a simulated response — safe for testing without USDC.
 
 ## Related projects
 
