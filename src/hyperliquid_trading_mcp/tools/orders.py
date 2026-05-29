@@ -1,6 +1,9 @@
 """Order-execution tools. Every tool reads the live `live_trading` setting and
 returns a simulated response in DRY-RUN. Risk validation + leverage enforcement
-+ SL/TP bracketing happen here before any SDK call."""
++ SL/TP bracketing happen here before any SDK call.
+
+LIVE SDK calls are wrapped so an exchange/SDK error surfaces as a structured
+OrderResult(status="error") rather than an unhandled exception."""
 
 from __future__ import annotations
 
@@ -8,6 +11,11 @@ from typing import Any
 
 from ..app import _get_client, _get_risk, _live_trading, _mode_tag, mcp, side_or_error
 from ..models import OrderResult
+
+
+def _error(e: Exception) -> OrderResult:
+    """Structured error envelope for a failed LIVE SDK call."""
+    return OrderResult(status="error", mode="LIVE", reason=str(e))
 
 
 @mcp.tool()
@@ -68,19 +76,24 @@ async def place_market_order(
             note="Set live_trading=true via update_settings to execute real orders.",
         )
 
-    lev_resp = await client.update_leverage(asset, int(risk.max_leverage), is_cross=True)
-    entry_resp = await client.market_open(asset, is_buy, size, slippage)
-    result: dict[str, Any] = {
-        "leverage_set": int(risk.max_leverage),
-        "leverage_response": lev_resp,
-        "entry": entry_resp,
-    }
-    result["stop_loss"] = await client.place_stop_loss(asset, is_buy, size, adjusted["sl_price"])
-    if adjusted.get("tp_price"):
-        result["take_profit"] = await client.place_take_profit(
-            asset, is_buy, size, adjusted["tp_price"]
-        )
-    return OrderResult(status="ok", mode="LIVE", **result)
+    try:
+        lev_resp = await client.update_leverage(asset, int(risk.max_leverage), is_cross=True)
+        entry_resp = await client.market_open(asset, is_buy, size, slippage)
+        result: dict[str, Any] = {
+            "leverage_set": int(risk.max_leverage),
+            "leverage_response": lev_resp,
+            "entry": entry_resp,
+        }
+        sl = adjusted.get("sl_price")
+        if sl is not None:
+            result["stop_loss"] = await client.place_stop_loss(asset, is_buy, size, sl)
+        if adjusted.get("tp_price"):
+            result["take_profit"] = await client.place_take_profit(
+                asset, is_buy, size, adjusted["tp_price"]
+            )
+        return OrderResult(status="ok", mode="LIVE", **result)
+    except Exception as e:
+        return _error(e)
 
 
 @mcp.tool()
@@ -138,24 +151,27 @@ async def place_limit_order(
             },
         )
 
-    lev_resp = await client.update_leverage(asset, int(risk.max_leverage), is_cross=True)
-    resp = await client.limit_order_with_brackets(
-        asset,
-        is_buy,
-        size,
-        limit_price,
-        sl_price=adjusted.get("sl_price"),
-        tp_price=adjusted.get("tp_price"),
-        tif=tif,
-    )
-    return OrderResult(
-        status="ok",
-        mode="LIVE",
-        leverage_set=int(risk.max_leverage),
-        leverage_response=lev_resp,
-        brackets_attached=bool(adjusted.get("sl_price") or adjusted.get("tp_price")),
-        order=resp,
-    )
+    try:
+        lev_resp = await client.update_leverage(asset, int(risk.max_leverage), is_cross=True)
+        resp = await client.limit_order_with_brackets(
+            asset,
+            is_buy,
+            size,
+            limit_price,
+            sl_price=adjusted.get("sl_price"),
+            tp_price=adjusted.get("tp_price"),
+            tif=tif,
+        )
+        return OrderResult(
+            status="ok",
+            mode="LIVE",
+            leverage_set=int(risk.max_leverage),
+            leverage_response=lev_resp,
+            brackets_attached=bool(adjusted.get("sl_price") or adjusted.get("tp_price")),
+            order=resp,
+        )
+    except Exception as e:
+        return _error(e)
 
 
 @mcp.tool()
@@ -185,16 +201,19 @@ async def modify_order(
                 "tif": tif,
             },
         )
-    resp = await _get_client().modify_order(
-        asset,
-        oid,
-        canonical == "buy",
-        size,
-        limit_price,
-        tif,
-        reduce_only,
-    )
-    return OrderResult(status="ok", mode="LIVE", response=resp)
+    try:
+        resp = await _get_client().modify_order(
+            asset,
+            oid,
+            canonical == "buy",
+            size,
+            limit_price,
+            tif,
+            reduce_only,
+        )
+        return OrderResult(status="ok", mode="LIVE", response=resp)
+    except Exception as e:
+        return _error(e)
 
 
 @mcp.tool()
@@ -202,14 +221,20 @@ async def close_position(asset: str) -> OrderResult:
     """Market-close an existing position on `asset`."""
     if not _live_trading():
         return OrderResult(status="ok", mode="DRY-RUN", would_close=asset)
-    return OrderResult(status="ok", mode="LIVE", response=await _get_client().market_close(asset))
+    try:
+        return OrderResult(
+            status="ok", mode="LIVE", response=await _get_client().market_close(asset)
+        )
+    except Exception as e:
+        return _error(e)
 
 
 @mcp.tool()
 async def force_close_losing_positions() -> OrderResult:
     """Close every position where loss% >= max_loss_per_position_pct setting.
 
-    Run at the top of every trading cycle as a safety net.
+    Run at the top of every trading cycle as a safety net. A failure closing one
+    position is recorded and the loop continues to the rest.
     """
     client = _get_client()
     risk = _get_risk()
@@ -221,8 +246,11 @@ async def force_close_losing_positions() -> OrderResult:
         if not live:
             results.append({"coin": t["coin"], "status": "DRY-RUN", "would_close": True, **t})
             continue
-        resp = await client.market_close(t["coin"])
-        results.append({"coin": t["coin"], "status": "closed", "response": resp, **t})
+        try:
+            resp = await client.market_close(t["coin"])
+            results.append({"coin": t["coin"], "status": "closed", "response": resp, **t})
+        except Exception as e:
+            results.append({"coin": t["coin"], "status": "error", "reason": str(e), **t})
     return OrderResult(status="ok", mode=_mode_tag(), closed=results)
 
 
@@ -231,9 +259,12 @@ async def cancel_order(asset: str, oid: int) -> OrderResult:
     """Cancel a specific order by ID."""
     if not _live_trading():
         return OrderResult(status="ok", mode="DRY-RUN", would_cancel={"asset": asset, "oid": oid})
-    return OrderResult(
-        status="ok", mode="LIVE", response=await _get_client().cancel_order(asset, oid)
-    )
+    try:
+        return OrderResult(
+            status="ok", mode="LIVE", response=await _get_client().cancel_order(asset, oid)
+        )
+    except Exception as e:
+        return _error(e)
 
 
 @mcp.tool()
@@ -241,7 +272,10 @@ async def cancel_all_orders(asset: str) -> OrderResult:
     """Cancel every open order for `asset` (entries + triggers)."""
     if not _live_trading():
         return OrderResult(status="ok", mode="DRY-RUN", would_cancel_all_for=asset)
-    return OrderResult(**await _get_client().cancel_all_orders(asset))
+    try:
+        return OrderResult(**await _get_client().cancel_all_orders(asset))
+    except Exception as e:
+        return _error(e)
 
 
 @mcp.tool()
@@ -253,11 +287,14 @@ async def set_stop_loss(asset: str, is_long: bool, size: float, sl_price: float)
             mode="DRY-RUN",
             would_set_sl={"asset": asset, "size": size, "sl_price": sl_price},
         )
-    return OrderResult(
-        status="ok",
-        mode="LIVE",
-        response=await _get_client().place_stop_loss(asset, is_long, size, sl_price),
-    )
+    try:
+        return OrderResult(
+            status="ok",
+            mode="LIVE",
+            response=await _get_client().place_stop_loss(asset, is_long, size, sl_price),
+        )
+    except Exception as e:
+        return _error(e)
 
 
 @mcp.tool()
@@ -269,11 +306,14 @@ async def set_take_profit(asset: str, is_long: bool, size: float, tp_price: floa
             mode="DRY-RUN",
             would_set_tp={"asset": asset, "size": size, "tp_price": tp_price},
         )
-    return OrderResult(
-        status="ok",
-        mode="LIVE",
-        response=await _get_client().place_take_profit(asset, is_long, size, tp_price),
-    )
+    try:
+        return OrderResult(
+            status="ok",
+            mode="LIVE",
+            response=await _get_client().place_take_profit(asset, is_long, size, tp_price),
+        )
+    except Exception as e:
+        return _error(e)
 
 
 @mcp.tool()
@@ -287,4 +327,7 @@ async def set_leverage(asset: str, leverage: int, is_cross: bool = True) -> Orde
             mode="DRY-RUN",
             would_set={"asset": asset, "leverage": leverage, "is_cross": is_cross},
         )
-    return OrderResult(**await _get_client().update_leverage(asset, leverage, is_cross))
+    try:
+        return OrderResult(**await _get_client().update_leverage(asset, leverage, is_cross))
+    except Exception as e:
+        return _error(e)

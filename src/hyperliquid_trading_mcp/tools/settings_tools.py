@@ -5,8 +5,21 @@ from __future__ import annotations
 from typing import Any
 
 from .. import settings
-from ..app import mcp, reset_client
+from ..app import mcp, reset_client, reset_risk
 from ..models import SettingsResult
+
+# Keys whose change must invalidate the cached RiskManager so its transient
+# state (circuit breaker, daily high, initial balance) does not outlive the caps.
+_RISK_CAP_KEYS = {
+    "max_position_pct",
+    "max_loss_per_position_pct",
+    "max_leverage",
+    "max_total_exposure_pct",
+    "daily_loss_circuit_breaker_pct",
+    "mandatory_sl_pct",
+    "max_concurrent_positions",
+    "min_balance_reserve_pct",
+}
 
 
 @mcp.tool()
@@ -34,14 +47,18 @@ async def update_settings(updates: dict[str, Any]) -> SettingsResult:
 
     Example: update_settings({"live_trading": true, "max_leverage": 5})
 
-    Note: changing `network` requires a server restart to take effect on
-    existing connections; new tool calls after restart pick it up.
+    Changing `network` rebuilds the client immediately (no restart needed).
+    Changing a risk cap rebuilds the risk manager so stale circuit-breaker /
+    daily-high state never outlives the configuration that produced it.
     """
     try:
         new = settings.update(updates)
         # Reset cached client if network changed (the SDK base_url is baked in)
         if "network" in updates:
             reset_client()
+        # Reset cached risk manager if any risk cap changed
+        if _RISK_CAP_KEYS.intersection(updates):
+            reset_risk()
         return SettingsResult(status="ok", settings=new, applied=list(updates.keys()))
     except ValueError as e:
         return SettingsResult(status="error", reason=str(e))
@@ -52,4 +69,5 @@ async def reset_settings() -> SettingsResult:
     """Wipe all persisted setting overrides. Reverts to defaults."""
     defaults = settings.reset()
     reset_client()
+    reset_risk()
     return SettingsResult(status="ok", settings=defaults)

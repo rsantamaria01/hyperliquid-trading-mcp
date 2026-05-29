@@ -35,6 +35,7 @@ def build_fake_client() -> MagicMock:
     c.wallet = MagicMock()
     c.wallet.address = "0xSIGNER"
     c.account_address = "0xACCOUNT"
+    c.network = "mainnet"  # matches default settings; avoids app._get_client rebuild
 
     # read paths
     c.get_user_state = AsyncMock(

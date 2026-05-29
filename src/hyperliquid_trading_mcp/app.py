@@ -69,6 +69,14 @@ def side_or_error(side: str | None) -> tuple[str | None, str | None]:
 
 def _get_client() -> HyperliquidClient:
     global _client
+    # Rebuild if the cached client was built for a different network than the
+    # one settings/env now resolve to. update_settings() also resets the client
+    # eagerly on a network change; this guard closes the window where a tool
+    # fetches the client after a network switch that did not go through that path.
+    if _client is not None:
+        want = (os.getenv("HYPERLIQUID_NETWORK") or settings.get("network") or "mainnet").lower()
+        if getattr(_client, "network", want) != want:
+            _client = None
     if _client is None:
         _client = HyperliquidClient()
     return _client
@@ -86,3 +94,11 @@ def reset_client() -> None:
     network change — the SDK base_url is baked in at construction)."""
     global _client
     _client = None
+
+
+def reset_risk() -> None:
+    """Drop the cached RiskManager so transient state (circuit breaker, daily
+    high, initial balance) is cleared. Called when settings are reset or a risk
+    cap changes, so stale runtime state never outlives its configuration."""
+    global _risk
+    _risk = None

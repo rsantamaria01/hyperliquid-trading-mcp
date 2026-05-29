@@ -35,7 +35,7 @@ async def get_open_orders() -> OpenOrders:
 
 
 @mcp.tool()
-async def get_recent_fills(limit: Annotated[int, Field(ge=1, le=1000)] = 50) -> Fills:
+async def get_recent_fills(limit: Annotated[int, Field(ge=1)] = 50) -> Fills:
     """Recent fills (executed trades)."""
     return Fills(fills=await _get_client().get_recent_fills(limit))
 

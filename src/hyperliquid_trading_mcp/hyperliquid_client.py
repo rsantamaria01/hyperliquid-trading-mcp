@@ -31,6 +31,7 @@ class HyperliquidClient:
 
         # Network now lives in settings (persistent), env can still override for ops.
         network = (os.getenv("HYPERLIQUID_NETWORK") or settings.get("network") or "mainnet").lower()
+        self.network = network  # recorded so app._get_client() can detect a stale network
         self.base_url = os.getenv("HYPERLIQUID_BASE_URL") or (
             getattr(constants, "TESTNET_API_URL", constants.MAINNET_API_URL)
             if network == "testnet"

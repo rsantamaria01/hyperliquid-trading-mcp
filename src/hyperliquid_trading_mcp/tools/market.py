@@ -69,7 +69,7 @@ async def get_market_context(
 @mcp.tool()
 async def get_order_book(
     asset: str,
-    depth: Annotated[int, Field(ge=1, le=100)] = 20,
+    depth: Annotated[int, Field(ge=1)] = 20,
 ) -> OrderBook:
     """Order book — top `depth` levels of bids and asks. Useful for spread,
     liquidity, and limit-price placement."""
@@ -80,7 +80,7 @@ async def get_order_book(
 @mcp.tool()
 async def get_recent_trades(
     asset: str,
-    limit: Annotated[int, Field(ge=1, le=1000)] = 50,
+    limit: Annotated[int, Field(ge=1)] = 50,
 ) -> RecentTrades:
     """Recent public trades on the asset (the tape). Useful for momentum read."""
     trades = await _get_client().get_recent_trades(asset, limit)
