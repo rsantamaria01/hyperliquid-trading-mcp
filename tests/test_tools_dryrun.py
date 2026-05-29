@@ -109,7 +109,46 @@ async def test_close_position_dry_run(fake_client):
 async def test_cancel_all_orders_dry_run(fake_client):
     out = await orders.cancel_all_orders("BTC")
     assert out.mode == "DRY-RUN"
-    fake_client.cancel_order.assert_not_called()
+    # the LIVE path calls client.cancel_all_orders — assert that, not cancel_order
+    fake_client.cancel_all_orders.assert_not_called()
+
+
+async def test_modify_order_dry_run(fake_client):
+    out = await orders.modify_order("BTC", 1, "buy", 0.1, 100.0)
+    assert out.mode == "DRY-RUN"
+    fake_client.modify_order.assert_not_called()
+
+
+async def test_set_stop_loss_dry_run(fake_client):
+    out = await orders.set_stop_loss("BTC", True, 0.1, 95.0)
+    assert out.mode == "DRY-RUN"
+    fake_client.place_stop_loss.assert_not_called()
+
+
+async def test_set_take_profit_dry_run(fake_client):
+    out = await orders.set_take_profit("BTC", True, 0.1, 110.0)
+    assert out.mode == "DRY-RUN"
+    fake_client.place_take_profit.assert_not_called()
+
+
+async def test_set_leverage_dry_run(fake_client):
+    out = await orders.set_leverage("BTC", 5)
+    assert out.mode == "DRY-RUN"
+    fake_client.update_leverage.assert_not_called()
+
+
+async def test_force_close_losing_positions_dry_run(fake_client):
+    # a position 25% underwater (> 20% max_loss threshold) should be targeted
+    fake_client.get_user_state.return_value = {
+        "balance": 1000.0,
+        "total_value": 975.0,
+        "positions": [{"coin": "BTC", "entryPx": 100.0, "szi": 1.0, "pnl": -25.0}],
+    }
+    out = await orders.force_close_losing_positions()
+    assert out.status == "ok" and out.mode == "DRY-RUN"
+    closed = out.model_dump()["closed"]
+    assert len(closed) == 1 and closed[0]["coin"] == "BTC" and closed[0]["status"] == "DRY-RUN"
+    fake_client.market_close.assert_not_called()
 
 
 async def test_invalid_side_is_rejected_without_client_calls(fake_client):
@@ -146,3 +185,8 @@ async def test_all_read_tools_return_base_models(fake_client):
         await meta.get_server_time(),
     ]
     assert all(isinstance(r, BaseModel) for r in results)
+    # spot-check propagated values, not just types
+    assert results[0].trades == [{"px": 100.0, "sz": 0.5}]  # get_recent_trades
+    assert results[3].oid == 1  # get_order_status
+    assert results[4].count == 1  # get_user_funding
+    assert results[8].to_close == []  # check_losing_positions

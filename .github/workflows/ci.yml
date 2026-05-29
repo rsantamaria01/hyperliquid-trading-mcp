@@ -15,6 +15,7 @@ jobs:
         uses: astral-sh/setup-uv@v8
         with:
           enable-cache: true
+          python-version: "3.12"
 
       - name: Sync (fails if uv.lock is stale)
         run: uv sync --locked

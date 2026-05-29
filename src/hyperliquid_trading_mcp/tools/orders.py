@@ -223,7 +223,7 @@ async def force_close_losing_positions() -> OrderResult:
             continue
         resp = await client.market_close(t["coin"])
         results.append({"coin": t["coin"], "status": "closed", "response": resp, **t})
-    return OrderResult(mode=_mode_tag(), closed=results)
+    return OrderResult(status="ok", mode=_mode_tag(), closed=results)
 
 
 @mcp.tool()

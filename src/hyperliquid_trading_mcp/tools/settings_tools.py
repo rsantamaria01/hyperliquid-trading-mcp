@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from .. import settings
 from ..app import mcp, reset_client
 from ..models import SettingsResult
@@ -22,7 +24,7 @@ async def get_settings() -> SettingsResult:
 
 
 @mcp.tool()
-async def update_settings(updates: dict) -> SettingsResult:
+async def update_settings(updates: dict[str, Any]) -> SettingsResult:
     """Update one or more settings and persist to disk.
 
     Editable keys: live_trading (bool), network ("mainnet"|"testnet"),

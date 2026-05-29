@@ -262,15 +262,6 @@ class HyperliquidClient:
     async def market_close(self, asset: str) -> Any:
         return await self._run(self.exchange.market_close, asset)
 
-    async def limit_order(
-        self, asset: str, is_buy: bool, size: float, limit_price: float, tif: str = "Gtc"
-    ) -> Any:
-        size = await self.round_size(asset, size)
-        limit_price = await self.round_price(asset, limit_price)
-        return await self._run(
-            self.exchange.order, asset, is_buy, size, limit_price, {"limit": {"tif": tif}}
-        )
-
     async def limit_order_with_brackets(
         self,
         asset: str,
