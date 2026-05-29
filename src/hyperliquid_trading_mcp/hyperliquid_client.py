@@ -24,11 +24,14 @@ class HyperliquidClient:
     def __init__(self) -> None:
         priv = os.getenv("HYPERLIQUID_PRIVATE_KEY")
         if not priv:
-            raise RuntimeError("HYPERLIQUID_PRIVATE_KEY env var is required (agent wallet signer key)")
+            raise RuntimeError(
+                "HYPERLIQUID_PRIVATE_KEY env var is required (agent wallet signer key)"
+            )
         self.wallet = Account.from_key(priv)
 
         # Network now lives in settings (persistent), env can still override for ops.
         network = (os.getenv("HYPERLIQUID_NETWORK") or settings.get("network") or "mainnet").lower()
+        self.network = network  # recorded so app._get_client() can detect a stale network
         self.base_url = os.getenv("HYPERLIQUID_BASE_URL") or (
             getattr(constants, "TESTNET_API_URL", constants.MAINNET_API_URL)
             if network == "testnet"
@@ -52,7 +55,9 @@ class HyperliquidClient:
         if ":" in asset:
             dex = asset.split(":")[0]
             if dex not in self._hip3_meta_cache:
-                data = await self._run(self.info.post, "/info", {"type": "metaAndAssetCtxs", "dex": dex})
+                data = await self._run(
+                    self.info.post, "/info", {"type": "metaAndAssetCtxs", "dex": dex}
+                )
                 self._hip3_meta_cache[dex] = data
             return self._hip3_meta_cache.get(dex)
         if not self._meta_cache:
@@ -90,7 +95,8 @@ class HyperliquidClient:
         max_decimals = max(0, 6 - sz_decimals)
         rounded = round(price, max_decimals)
         # Cap to 5 significant figures
-        from math import log10, floor
+        from math import floor, log10
+
         if rounded > 0:
             digits_before_decimal = max(1, int(floor(log10(abs(rounded)))) + 1)
             sig_decimals = max(0, 5 - digits_before_decimal)
@@ -121,16 +127,35 @@ class HyperliquidClient:
 
     async def get_candles(self, asset: str, interval: str = "5m", count: int = 100) -> list[dict]:
         interval_ms = {
-            "1m": 60_000, "3m": 180_000, "5m": 300_000, "15m": 900_000, "30m": 1_800_000,
-            "1h": 3_600_000, "2h": 7_200_000, "4h": 14_400_000, "8h": 28_800_000,
-            "12h": 43_200_000, "1d": 86_400_000, "3d": 259_200_000, "1w": 604_800_000,
+            "1m": 60_000,
+            "3m": 180_000,
+            "5m": 300_000,
+            "15m": 900_000,
+            "30m": 1_800_000,
+            "1h": 3_600_000,
+            "2h": 7_200_000,
+            "4h": 14_400_000,
+            "8h": 28_800_000,
+            "12h": 43_200_000,
+            "1d": 86_400_000,
+            "3d": 259_200_000,
+            "1w": 604_800_000,
         }.get(interval, 300_000)
         end = int(time.time() * 1000)
         start = end - count * interval_ms
         if ":" in asset:
             raw = await self._run(
-                self.info.post, "/info",
-                {"type": "candleSnapshot", "req": {"coin": asset, "interval": interval, "startTime": start, "endTime": end}},
+                self.info.post,
+                "/info",
+                {
+                    "type": "candleSnapshot",
+                    "req": {
+                        "coin": asset,
+                        "interval": interval,
+                        "startTime": start,
+                        "endTime": end,
+                    },
+                },
             )
         else:
             raw = await self._run(self.info.candles_snapshot, asset, interval, start, end)
@@ -199,7 +224,11 @@ class HyperliquidClient:
                 pass
         if not total_value:
             total_value = balance + sum(max(p.get("pnl", 0.0), 0.0) for p in enriched)
-        return {"balance": round(balance, 4), "total_value": round(total_value, 4), "positions": enriched}
+        return {
+            "balance": round(balance, 4),
+            "total_value": round(total_value, 4),
+            "positions": enriched,
+        }
 
     async def get_open_orders(self) -> list[dict]:
         try:
@@ -225,17 +254,14 @@ class HyperliquidClient:
             return []
 
     # ------ order execution ------
-    async def market_open(self, asset: str, is_buy: bool, size: float, slippage: float = 0.01) -> Any:
+    async def market_open(
+        self, asset: str, is_buy: bool, size: float, slippage: float = 0.01
+    ) -> Any:
         size = await self.round_size(asset, size)
         return await self._run(self.exchange.market_open, asset, is_buy, size, None, slippage)
 
     async def market_close(self, asset: str) -> Any:
         return await self._run(self.exchange.market_close, asset)
-
-    async def limit_order(self, asset: str, is_buy: bool, size: float, limit_price: float, tif: str = "Gtc") -> Any:
-        size = await self.round_size(asset, size)
-        limit_price = await self.round_price(asset, limit_price)
-        return await self._run(self.exchange.order, asset, is_buy, size, limit_price, {"limit": {"tif": tif}})
 
     async def limit_order_with_brackets(
         self,
@@ -271,24 +297,32 @@ class HyperliquidClient:
         ]
         if tp_price is not None:
             tp_price = await self.round_price(asset, tp_price)
-            orders.append({
-                "coin": asset,
-                "is_buy": not is_buy,
-                "sz": size,
-                "limit_px": tp_price,
-                "order_type": {"trigger": {"triggerPx": tp_price, "isMarket": True, "tpsl": "tp"}},
-                "reduce_only": True,
-            })
+            orders.append(
+                {
+                    "coin": asset,
+                    "is_buy": not is_buy,
+                    "sz": size,
+                    "limit_px": tp_price,
+                    "order_type": {
+                        "trigger": {"triggerPx": tp_price, "isMarket": True, "tpsl": "tp"}
+                    },
+                    "reduce_only": True,
+                }
+            )
         if sl_price is not None:
             sl_price = await self.round_price(asset, sl_price)
-            orders.append({
-                "coin": asset,
-                "is_buy": not is_buy,
-                "sz": size,
-                "limit_px": sl_price,
-                "order_type": {"trigger": {"triggerPx": sl_price, "isMarket": True, "tpsl": "sl"}},
-                "reduce_only": True,
-            })
+            orders.append(
+                {
+                    "coin": asset,
+                    "is_buy": not is_buy,
+                    "sz": size,
+                    "limit_px": sl_price,
+                    "order_type": {
+                        "trigger": {"triggerPx": sl_price, "isMarket": True, "tpsl": "sl"}
+                    },
+                    "reduce_only": True,
+                }
+            )
 
         return await self._run(lambda: self.exchange.bulk_orders(orders))
 
@@ -298,7 +332,9 @@ class HyperliquidClient:
         ot = {"trigger": {"triggerPx": sl_price, "isMarket": True, "tpsl": "sl"}}
         return await self._run(self.exchange.order, asset, not is_buy, size, sl_price, ot, True)
 
-    async def place_take_profit(self, asset: str, is_buy: bool, size: float, tp_price: float) -> Any:
+    async def place_take_profit(
+        self, asset: str, is_buy: bool, size: float, tp_price: float
+    ) -> Any:
         size = await self.round_size(asset, size)
         tp_price = await self.round_price(asset, tp_price)
         ot = {"trigger": {"triggerPx": tp_price, "isMarket": True, "tpsl": "tp"}}
@@ -350,13 +386,6 @@ class HyperliquidClient:
         """Return status of a single order by id (filled, resting, cancelled, etc.)."""
         return await self._run(self.info.query_order_by_oid, self.query_address, oid)
 
-    async def update_leverage(self, asset: str, leverage: int, is_cross: bool = True) -> dict:
-        try:
-            resp = await self._run(self.exchange.update_leverage, int(leverage), asset, is_cross)
-            return {"status": "ok", "response": resp}
-        except Exception as e:
-            return {"status": "error", "reason": str(e)}
-
     # ---------- market depth & trades ----------
     async def get_order_book(self, asset: str, depth: int = 20) -> dict:
         """Order book — top `depth` levels of bids and asks."""
@@ -364,14 +393,22 @@ class HyperliquidClient:
         levels = l2.get("levels") if isinstance(l2, dict) else None
         bids, asks = [], []
         if isinstance(levels, list) and len(levels) >= 2:
-            bids = [{"px": float(x["px"]), "sz": float(x["sz"]), "n": int(x.get("n", 0))} for x in levels[0][:depth]]
-            asks = [{"px": float(x["px"]), "sz": float(x["sz"]), "n": int(x.get("n", 0))} for x in levels[1][:depth]]
+            bids = [
+                {"px": float(x["px"]), "sz": float(x["sz"]), "n": int(x.get("n", 0))}
+                for x in levels[0][:depth]
+            ]
+            asks = [
+                {"px": float(x["px"]), "sz": float(x["sz"]), "n": int(x.get("n", 0))}
+                for x in levels[1][:depth]
+            ]
         return {"asset": asset, "bids": bids, "asks": asks, "depth": depth}
 
     async def get_recent_trades(self, asset: str, limit: int = 50) -> list[dict]:
         """Recent trades on the asset (public tape)."""
         try:
-            trades = await self._run(self.info.post, "/info", {"type": "recentTrades", "coin": asset})
+            trades = await self._run(
+                self.info.post, "/info", {"type": "recentTrades", "coin": asset}
+            )
             if isinstance(trades, list):
                 return trades[-limit:]
             return []
@@ -379,48 +416,76 @@ class HyperliquidClient:
             return []
 
     # ---------- funding ----------
-    async def get_user_funding(self, start_time_ms: int | None = None, end_time_ms: int | None = None) -> list[dict]:
+    async def get_user_funding(
+        self, start_time_ms: int | None = None, end_time_ms: int | None = None
+    ) -> list[dict]:
         """User's funding payment history. Defaults to last 7 days."""
         end_time_ms = end_time_ms or int(time.time() * 1000)
         start_time_ms = start_time_ms or (end_time_ms - 7 * 86_400_000)
         try:
-            return await self._run(
-                self.info.post, "/info",
-                {"type": "userFunding", "user": self.query_address,
-                 "startTime": start_time_ms, "endTime": end_time_ms},
-            ) or []
+            return (
+                await self._run(
+                    self.info.post,
+                    "/info",
+                    {
+                        "type": "userFunding",
+                        "user": self.query_address,
+                        "startTime": start_time_ms,
+                        "endTime": end_time_ms,
+                    },
+                )
+                or []
+            )
         except Exception:
             return []
 
-    async def get_historical_funding(self, asset: str, start_time_ms: int | None = None, end_time_ms: int | None = None) -> list[dict]:
+    async def get_historical_funding(
+        self, asset: str, start_time_ms: int | None = None, end_time_ms: int | None = None
+    ) -> list[dict]:
         """Funding rate history for `asset`. Defaults to last 7 days."""
         end_time_ms = end_time_ms or int(time.time() * 1000)
         start_time_ms = start_time_ms or (end_time_ms - 7 * 86_400_000)
         try:
-            return await self._run(
-                self.info.post, "/info",
-                {"type": "fundingHistory", "coin": asset,
-                 "startTime": start_time_ms, "endTime": end_time_ms},
-            ) or []
+            return (
+                await self._run(
+                    self.info.post,
+                    "/info",
+                    {
+                        "type": "fundingHistory",
+                        "coin": asset,
+                        "startTime": start_time_ms,
+                        "endTime": end_time_ms,
+                    },
+                )
+                or []
+            )
         except Exception:
             return []
 
     # ---------- vaults ----------
     async def get_vault_details(self, vault_address: str) -> dict:
         try:
-            return await self._run(
-                self.info.post, "/info",
-                {"type": "vaultDetails", "vaultAddress": vault_address},
-            ) or {}
+            return (
+                await self._run(
+                    self.info.post,
+                    "/info",
+                    {"type": "vaultDetails", "vaultAddress": vault_address},
+                )
+                or {}
+            )
         except Exception as e:
             return {"error": str(e)}
 
     async def get_vault_performance(self, vault_address: str) -> dict:
         try:
-            return await self._run(
-                self.info.post, "/info",
-                {"type": "vaultPerformance", "vaultAddress": vault_address},
-            ) or {}
+            return (
+                await self._run(
+                    self.info.post,
+                    "/info",
+                    {"type": "vaultPerformance", "vaultAddress": vault_address},
+                )
+                or {}
+            )
         except Exception as e:
             return {"error": str(e)}
 

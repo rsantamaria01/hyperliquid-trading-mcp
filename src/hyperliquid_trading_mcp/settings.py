@@ -16,7 +16,6 @@ import threading
 from pathlib import Path
 from typing import Any
 
-
 SETTINGS_PATH = Path(os.getenv("HYPERLIQUID_SETTINGS_PATH") or "/data/settings.json")
 
 
@@ -24,7 +23,6 @@ DEFAULTS: dict[str, Any] = {
     # Trading mode
     "live_trading": False,
     "network": "mainnet",  # "mainnet" or "testnet"
-
     # Risk caps (percentages where applicable)
     "max_position_pct": 10.0,
     "max_loss_per_position_pct": 20.0,
@@ -68,7 +66,7 @@ def _coerce(key: str, value: Any) -> Any:
     try:
         return target(value)
     except (TypeError, ValueError) as e:
-        raise ValueError(f"setting {key!r} must be {target.__name__}: {e}")
+        raise ValueError(f"setting {key!r} must be {target.__name__}: {e}") from e
 
 
 def _read_disk() -> dict[str, Any]:
