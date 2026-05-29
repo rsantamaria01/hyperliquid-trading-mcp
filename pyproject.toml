@@ -8,11 +8,20 @@ readme = "README.md"
 requires-python = ">=3.10"
 keywords = ["hyperliquid", "mcp", "trading", "perp", "futures", "crypto"]
 dependencies = [
-  "mcp>=1.0.0",
+  "mcp>=1.10.0",
+  "pydantic>=2.0",
   "hyperliquid-python-sdk>=0.20.0,<0.21.0",
   "eth-account>=0.13.0",
   "python-dotenv>=1.0.0",
   "websocket-client>=1.6.0",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.0",
+  "pytest-asyncio>=0.23",
+  "ruff>=0.15",
+  "pre-commit>=3.7",
 ]
 
 [project.scripts]
@@ -28,10 +37,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-# On disk we keep a flat src/ layout (src/server.py, src/settings.py, ...)
-# but the wheel installs the package as `hyperliquid_trading_mcp` so the
-# script entrypoint resolves correctly.
-packages = ["src"]
-
-[tool.hatch.build.targets.wheel.sources]
-"src" = "hyperliquid_trading_mcp"
+# Standard src layout: the importable package lives at
+# src/hyperliquid_trading_mcp/, matching the script entrypoint. A nested
+# package dir (rather than a flat src/ with a sources prefix rewrite) is
+# required for editable installs (`uv sync`) to work.
+packages = ["src/hyperliquid_trading_mcp"]

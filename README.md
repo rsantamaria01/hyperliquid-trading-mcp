@@ -40,15 +40,17 @@ To keep a long-lived container running for fast attach:
 docker compose up -d mcp-daemon
 ```
 
-## Quick start — Python
+## Quick start — Python (uv)
+
+This project is managed with [uv](https://docs.astral.sh/uv/). Dependencies are pinned in `uv.lock`.
 
 ```bash
-pip install -e .
-# or with uv
-uv pip install -e .
+uv sync                          # create .venv from the lockfile
+uv run hyperliquid-trading-mcp   # run the server from source
 
-# Run
-hyperliquid-trading-mcp
+# Dev tooling (tests, lint) comes from the dev dependency group:
+uv run pytest
+uv run ruff check .
 ```
 
 ## Configuration
