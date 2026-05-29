@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Optional
+from typing import Annotated
 
 from pydantic import Field
 
@@ -16,7 +16,6 @@ from ..models import (
     OrderStatusResult,
     VaultResult,
 )
-
 
 # ---------------------------------------------------------------------- account
 
@@ -52,7 +51,7 @@ async def get_order_status(oid: int) -> OrderStatusResult:
 
 @mcp.tool()
 async def get_user_funding(
-    start_time_ms: Optional[int] = None, end_time_ms: Optional[int] = None
+    start_time_ms: int | None = None, end_time_ms: int | None = None
 ) -> FundingResult:
     """Your funding payment history. Defaults to last 7 days."""
     fills = await _get_client().get_user_funding(start_time_ms, end_time_ms)
@@ -61,7 +60,7 @@ async def get_user_funding(
 
 @mcp.tool()
 async def get_historical_funding(
-    asset: str, start_time_ms: Optional[int] = None, end_time_ms: Optional[int] = None
+    asset: str, start_time_ms: int | None = None, end_time_ms: int | None = None
 ) -> HistoricalFunding:
     """Funding rate history for an asset. Defaults to last 7 days."""
     rates = await _get_client().get_historical_funding(asset, start_time_ms, end_time_ms)

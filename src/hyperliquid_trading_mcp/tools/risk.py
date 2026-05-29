@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from ..app import _get_client, _get_risk, _normalize_side, mcp
 from ..models import LosingPositions, RiskLimits, ValidateTradeResult
 
@@ -27,8 +25,8 @@ async def validate_trade(
     asset: str,
     action: str,
     allocation_usd: float,
-    sl_price: Optional[float] = None,
-    tp_price: Optional[float] = None,
+    sl_price: float | None = None,
+    tp_price: float | None = None,
 ) -> ValidateTradeResult:
     """Run a proposed trade through the risk manager WITHOUT executing.
 
@@ -47,8 +45,12 @@ async def validate_trade(
     risk.record_initial_balance(state.get("balance", 0))
     current = await client.get_current_price(asset)
     trade = {
-        "asset": asset, "action": canonical, "allocation_usd": allocation_usd,
-        "sl_price": sl_price, "tp_price": tp_price, "current_price": current,
+        "asset": asset,
+        "action": canonical,
+        "allocation_usd": allocation_usd,
+        "sl_price": sl_price,
+        "tp_price": tp_price,
+        "current_price": current,
     }
     ok, reason, adjusted = risk.validate_trade(trade, state)
     return ValidateTradeResult(

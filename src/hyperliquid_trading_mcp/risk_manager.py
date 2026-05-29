@@ -85,7 +85,10 @@ class RiskManager:
             exposure += qty * entry
         cap = account_value * (self.max_total_exposure_pct / 100.0)
         if exposure + new_alloc > cap:
-            return False, f"Total exposure ${exposure + new_alloc:.2f} > {self.max_total_exposure_pct}% cap (${cap:.2f})"
+            return (
+                False,
+                f"Total exposure ${exposure + new_alloc:.2f} > {self.max_total_exposure_pct}% cap (${cap:.2f})",
+            )
         return True, ""
 
     def check_leverage(self, alloc_usd, balance):
@@ -104,7 +107,10 @@ class RiskManager:
             dd = ((self.daily_high_value - account_value) / self.daily_high_value) * 100
             if dd >= self.daily_loss_circuit_breaker_pct:
                 self.circuit_breaker_active = True
-                return False, f"Daily drawdown {dd:.2f}% exceeds {self.daily_loss_circuit_breaker_pct}%"
+                return (
+                    False,
+                    f"Daily drawdown {dd:.2f}% exceeds {self.daily_loss_circuit_breaker_pct}%",
+                )
         return True, ""
 
     def check_concurrent_positions(self, count):
@@ -140,13 +146,15 @@ class RiskManager:
                 continue
             loss_pct = abs(pnl / notional) * 100 if pnl < 0 else 0
             if loss_pct >= self.max_loss_per_position_pct:
-                to_close.append({
-                    "coin": coin,
-                    "size": abs(size),
-                    "is_long": size > 0,
-                    "loss_pct": round(loss_pct, 2),
-                    "pnl": round(pnl, 2),
-                })
+                to_close.append(
+                    {
+                        "coin": coin,
+                        "size": abs(size),
+                        "is_long": size > 0,
+                        "loss_pct": round(loss_pct, 2),
+                        "pnl": round(pnl, 2),
+                    }
+                )
         return to_close
 
     def validate_trade(self, trade, account_state):
@@ -154,7 +162,11 @@ class RiskManager:
         action_map = {"buy": "buy", "long": "buy", "sell": "sell", "short": "sell", "hold": "hold"}
         action = action_map.get(raw_action, raw_action)
         if action not in ("buy", "sell", "hold"):
-            return False, f"Unknown action {trade.get('action')!r}; expected buy/sell/long/short/hold", trade
+            return (
+                False,
+                f"Unknown action {trade.get('action')!r}; expected buy/sell/long/short/hold",
+                trade,
+            )
         trade = {**trade, "action": action}
         if action == "hold":
             return True, "", trade

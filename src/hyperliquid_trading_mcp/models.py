@@ -15,7 +15,7 @@ Two flavours:
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
@@ -35,7 +35,7 @@ class PriceResult(BaseModel):
 
 
 class Candle(BaseModel):
-    t: Optional[int] = None
+    t: int | None = None
     open: float
     high: float
     low: float
@@ -54,8 +54,8 @@ class MarketContext(BaseModel):
     asset: str
     interval: str
     current_price: float
-    open_interest: Optional[float] = None
-    funding_rate: Optional[float] = None
+    open_interest: float | None = None
+    funding_rate: float | None = None
     indicators: dict[str, Any]
     recent_candles: list[Candle]
 
@@ -129,7 +129,7 @@ class RiskLimits(BaseModel):
     max_concurrent_positions: int
     min_balance_reserve_pct: float
     circuit_breaker_active: bool
-    initial_balance: Optional[float] = None
+    initial_balance: float | None = None
 
 
 class LosingPositions(BaseModel):
@@ -140,8 +140,8 @@ class ValidateTradeResult(BaseModel):
     allowed: bool
     reason: str
     trade: dict[str, Any]
-    current_price: Optional[float] = None
-    action_canonical: Optional[str] = None
+    current_price: float | None = None
+    action_canonical: str | None = None
 
 
 # ---------------------------------------------------------------------- orders
@@ -154,9 +154,9 @@ class OrderResult(_Passthrough):
     embed raw SDK responses ride along as extra fields.
     """
 
-    status: Optional[str] = None
-    mode: Optional[str] = None
-    reason: Optional[str] = None
+    status: str | None = None
+    mode: str | None = None
+    reason: str | None = None
 
 
 # -------------------------------------------------------------------- settings
@@ -165,8 +165,8 @@ class OrderResult(_Passthrough):
 class SettingsResult(_Passthrough):
     """get/update/reset settings. Shape varies by tool; common fields pinned."""
 
-    settings: Optional[dict[str, Any]] = None
-    status: Optional[str] = None
+    settings: dict[str, Any] | None = None
+    status: str | None = None
 
 
 # ------------------------------------------------------------------------ meta
@@ -174,16 +174,16 @@ class SettingsResult(_Passthrough):
 
 class TradingMode(_Passthrough):
     mode: str
-    network: Optional[str] = None
-    signer_address: Optional[str] = None
-    account_address: Optional[str] = None
-    live_trading: Optional[bool] = None
-    settings_path: Optional[str] = None
-    error: Optional[str] = None
+    network: str | None = None
+    signer_address: str | None = None
+    account_address: str | None = None
+    live_trading: bool | None = None
+    settings_path: str | None = None
+    error: str | None = None
 
 
 class ServerTime(_Passthrough):
-    local_ms: Optional[int] = None
-    rtt_ms: Optional[float] = None
-    meta_ok: Optional[bool] = None
-    error: Optional[str] = None
+    local_ms: int | None = None
+    rtt_ms: float | None = None
+    meta_ok: bool | None = None
+    error: str | None = None

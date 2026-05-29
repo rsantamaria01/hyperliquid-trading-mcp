@@ -1,0 +1,9 @@
+# Ruff lint + format. Install with `uv run pre-commit install`.
+# Run across the repo with `uv run pre-commit run --all-files`.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.15
+    hooks:
+      - id: ruff-check        # lint; --fix auto-applies safe fixes
+        args: [--fix]
+      - id: ruff-format       # must run after ruff-check

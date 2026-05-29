@@ -45,8 +45,12 @@ def _normalize_side(s: str | None) -> str | None:
     if not s:
         return None
     m = {
-        "buy": "buy", "long": "buy", "b": "buy",
-        "sell": "sell", "short": "sell", "s": "sell",
+        "buy": "buy",
+        "long": "buy",
+        "b": "buy",
+        "sell": "sell",
+        "short": "sell",
+        "s": "sell",
     }
     return m.get(str(s).strip().lower())
 

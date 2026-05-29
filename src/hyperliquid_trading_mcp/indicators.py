@@ -6,6 +6,7 @@ so the MCP server has no external indicator dependency.
 """
 
 from __future__ import annotations
+
 import math
 
 
@@ -76,17 +77,19 @@ def macd(candles: list[dict], fast: int = 12, slow: int = 26, signal: int = 9) -
     ema_fast = ema(closes, fast)
     ema_slow = ema(closes, slow)
     macd_line: list[float | None] = []
-    for f, s in zip(ema_fast, ema_slow):
+    for f, s in zip(ema_fast, ema_slow, strict=False):
         if f is not None and s is not None:
             macd_line.append(round(f - s, 6))
         else:
             macd_line.append(None)
     valid_macd = [v for v in macd_line if v is not None]
-    signal_line_raw = ema(valid_macd, signal) if len(valid_macd) >= signal else [None] * len(valid_macd)
+    signal_line_raw = (
+        ema(valid_macd, signal) if len(valid_macd) >= signal else [None] * len(valid_macd)
+    )
     signal_line: list[float | None] = [None] * (len(macd_line) - len(valid_macd))
     signal_line.extend(signal_line_raw)
     histogram: list[float | None] = []
-    for m, s in zip(macd_line, signal_line):
+    for m, s in zip(macd_line, signal_line, strict=False):
         if m is not None and s is not None:
             histogram.append(round(m - s, 6))
         else:

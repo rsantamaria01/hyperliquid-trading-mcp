@@ -42,3 +42,20 @@ build-backend = "hatchling.build"
 # package dir (rather than a flat src/ with a sources prefix rewrite) is
 # required for editable installs (`uv sync`) to work.
 packages = ["src/hyperliquid_trading_mcp"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+# Conservative, useful default: pyflakes, pycodestyle errors, import sorting,
+# bugbear, pyupgrade. Line length is owned by the formatter (E501 ignored).
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
