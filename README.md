@@ -15,7 +15,6 @@ This fork keeps the same MCP-server-for-Hyperliquid shape but adds:
 - **Price tick rounding**: SL/TP prices are rounded to Hyperliquid's per-asset tick rule (max 5 sig figs, max `6 − szDecimals` decimal places). No more "Invalid TP/SL price" rejections.
 - **Action normalization**: tools accept `buy`/`long`/`sell`/`short` in any case.
 - **Bracket limit orders**: entry + reduce-only SL trigger + reduce-only TP trigger submitted atomically via `bulk_orders`.
-- **Setup tools**: `link_env_file(path)` lets clients connect to a `.env` file on disk without the user pasting credentials into chat.
 - **Force-close loop**: `force_close_losing_positions()` for the agent's safety net at every trading-cycle iteration.
 
 ## Quick start — Docker (recommended)

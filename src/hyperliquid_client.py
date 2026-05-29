@@ -350,13 +350,6 @@ class HyperliquidClient:
         """Return status of a single order by id (filled, resting, cancelled, etc.)."""
         return await self._run(self.info.query_order_by_oid, self.query_address, oid)
 
-    async def update_leverage(self, asset: str, leverage: int, is_cross: bool = True) -> dict:
-        try:
-            resp = await self._run(self.exchange.update_leverage, int(leverage), asset, is_cross)
-            return {"status": "ok", "response": resp}
-        except Exception as e:
-            return {"status": "error", "reason": str(e)}
-
     # ---------- market depth & trades ----------
     async def get_order_book(self, asset: str, depth: int = 20) -> dict:
         """Order book — top `depth` levels of bids and asks."""
