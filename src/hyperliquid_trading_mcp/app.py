@@ -55,6 +55,18 @@ def _normalize_side(s: str | None) -> str | None:
     return m.get(str(s).strip().lower())
 
 
+def side_or_error(side: str | None) -> tuple[str | None, str | None]:
+    """Normalize a trade side to 'buy'/'sell', or return a rejection message.
+
+    Returns (canonical, None) on success or (None, message) when unrecognized,
+    so order tools share one rejection contract instead of restating it.
+    """
+    canonical = _normalize_side(side)
+    if canonical is None:
+        return None, f"side must be buy/sell/long/short (got {side!r})"
+    return canonical, None
+
+
 def _get_client() -> HyperliquidClient:
     global _client
     if _client is None:

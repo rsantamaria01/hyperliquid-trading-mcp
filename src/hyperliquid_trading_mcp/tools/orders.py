@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..app import _get_client, _get_risk, _live_trading, _mode_tag, _normalize_side, mcp
+from ..app import _get_client, _get_risk, _live_trading, _mode_tag, mcp, side_or_error
 from ..models import OrderResult
 
 
@@ -25,11 +25,9 @@ async def place_market_order(
     DRY-RUN by default. Set `live_trading: true` via update_settings to send
     real orders.
     """
-    canonical = _normalize_side(side)
-    if canonical is None:
-        return OrderResult(
-            status="error", reason=f"side must be buy/sell/long/short (got {side!r})"
-        )
+    canonical, err = side_or_error(side)
+    if err:
+        return OrderResult(status="error", reason=err)
     client = _get_client()
     risk = _get_risk()
     state = await client.get_user_state()
@@ -102,11 +100,9 @@ async def place_limit_order(
 
     tif: "Gtc" (good-til-cancel), "Ioc" (immediate-or-cancel), "Alo" (post-only).
     """
-    canonical = _normalize_side(side)
-    if canonical is None:
-        return OrderResult(
-            status="error", reason=f"side must be buy/sell/long/short (got {side!r})"
-        )
+    canonical, err = side_or_error(side)
+    if err:
+        return OrderResult(status="error", reason=err)
     client = _get_client()
     risk = _get_risk()
     state = await client.get_user_state()
@@ -173,11 +169,9 @@ async def modify_order(
     reduce_only: bool = False,
 ) -> OrderResult:
     """Modify an existing resting order in-place (no cancel + replace)."""
-    canonical = _normalize_side(side)
-    if canonical is None:
-        return OrderResult(
-            status="error", reason=f"side must be buy/sell/long/short (got {side!r})"
-        )
+    canonical, err = side_or_error(side)
+    if err:
+        return OrderResult(status="error", reason=err)
     if not _live_trading():
         return OrderResult(
             status="ok",

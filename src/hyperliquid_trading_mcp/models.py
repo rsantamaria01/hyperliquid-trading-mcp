@@ -172,7 +172,8 @@ class SettingsResult(_Passthrough):
 # ------------------------------------------------------------------------ meta
 
 
-class TradingMode(_Passthrough):
+class TradingMode(BaseModel):
+    # Strict: every field is built from values we control (see meta.trading_mode).
     mode: str
     network: str | None = None
     signer_address: str | None = None
@@ -182,7 +183,8 @@ class TradingMode(_Passthrough):
     error: str | None = None
 
 
-class ServerTime(_Passthrough):
+class ServerTime(BaseModel):
+    # Strict: keys mirror HyperliquidClient.get_server_time exactly.
     local_ms: int | None = None
     rtt_ms: float | None = None
     meta_ok: bool | None = None
