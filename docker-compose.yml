@@ -1,9 +1,10 @@
-# docker-compose.yml — long-lived MCP server on http://localhost:8000/sse.
+# docker-compose.yml — long-lived MCP server on http://localhost:8000/mcp
+# (Streamable HTTP transport).
 #
 # Quick start:
 #   cp .env.example .env        # fill in HYPERLIQUID_PRIVATE_KEY + VAULT_ADDRESS
 #   docker compose up -d
-#   curl -i http://localhost:8000/sse   # 200 = healthy
+#   curl -sf http://localhost:8000/health   # "ok" = healthy
 #
 # Runtime config (risk caps, network, live_trading) lives in /data/settings.json
 # inside the named volume `hyperliquid-mcp-data`. Edit it via MCP tools at
@@ -12,22 +13,17 @@
 services:
   mcp:
     build: .
-    image: rsantamaria01/hyperliquid-trading-mcp:latest
+    image: ghcr.io/rsantamaria01/hyperliquid-trading-mcp:latest
     container_name: hyperliquid-trading-mcp
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8000:8000"   # localhost only — don't expose externally
+      - "8000:8000"   # exposed on all host interfaces — reach at <host-ip>:8000 (guarded by MCP_AUTH_TOKEN)
     env_file:
       - .env
-    environment:
-      MCP_TRANSPORT: sse
-      MCP_HTTP_HOST: 0.0.0.0
-      MCP_HTTP_PORT: 8000
-      HYPERLIQUID_SETTINGS_PATH: /data/settings.json
     volumes:
       - hyperliquid-mcp-data:/data
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/sse', timeout=2)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
       interval: 30s
       timeout: 5s
       retries: 3
