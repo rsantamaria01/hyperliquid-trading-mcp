@@ -1,13 +1,14 @@
 name: Release
 
-# Publish the package to PyPI on a pushed version tag (e.g. v3.0.0).
+# On a pushed version tag (e.g. v3.0.0): gate on lint+tests, build the
+# sdist+wheel, and publish a GitHub Release with those artifacts. The package is
+# installed straight from git (uvx --from git+https://...@<tag>), so no registry
+# publish is needed — the tag is the pin and the Release is the artifact record.
 on:
   push:
     tags: ["v*.*.*"]
 
 jobs:
-  # Gate the publish on lint + tests passing for the tagged commit, so a tag on
-  # a broken commit never publishes a broken release to PyPI.
   test:
     runs-on: ubuntu-latest
     steps:
@@ -21,12 +22,11 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run pytest -q
 
-  build-and-publish:
+  release:
     needs: test
     runs-on: ubuntu-latest
-    environment: pypi
     permissions:
-      id-token: write # required for PyPI Trusted Publishing (OIDC)
+      contents: write # create releases + upload assets
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v8.1.0
@@ -37,7 +37,19 @@ jobs:
       - name: Build sdist + wheel
         run: uv build
 
-      # Trusted Publishing (OIDC) — no stored token. The PyPI project must
-      # register this repo + workflow (release.yml) as a trusted publisher.
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          body: |
+            ## Install
+
+            The plugin spawns this server via `uvx` straight from git — no registry:
+
+            ```
+            uvx --from git+https://github.com/rsantamaria01/hyperliquid-trading-mcp@${{ github.ref_name }} hyperliquid-trading-mcp
+            ```
+
+            Or build locally from the attached wheel. Requires a workspace `.env`
+            with `HYPERLIQUID_PRIVATE_KEY` + `HYPERLIQUID_VAULT_ADDRESS`.

@@ -1,6 +1,6 @@
 # Hyperliquid Trading MCP
 
-A Model Context Protocol server for trading Hyperliquid perpetual futures. Runs as a **local stdio subprocess** that an MCP client (Claude Code CLI) spawns on demand — no server to host, no network port, no auth.
+A Model Context Protocol server for trading Hyperliquid perpetual futures. Runs as a **local stdio subprocess** that an MCP client (Claude Code CLI) spawns on demand via `uvx` — no server to host, no network port, no auth, no registry (installed straight from git).
 
 > **Forked from** [edkdev/hyperliquid-mcp](https://github.com/edkdev/hyperliquid-mcp). Risk-management layer (position cap, leverage enforcement, mandatory stop-loss, daily drawdown circuit breaker, force-close at max loss) adapted from [sanketagarwal/hyperliquid-trading-agent](https://github.com/sanketagarwal/hyperliquid-trading-agent).
 
@@ -21,7 +21,7 @@ This fork keeps the same MCP-server-for-Hyperliquid shape but adds:
 
 The server speaks **local stdio** (`mcp.run()`). The MCP client launches it as a child process — there is no HTTP endpoint, no port, and no token. The boundary is the workspace: the server reads its secrets and settings from the directory the client spawned it in (`CLAUDE_PROJECT_DIR`).
 
-The easiest launcher is [`uvx`](https://docs.astral.sh/uv/), which resolves the package from PyPI and runs the console script in one step.
+The launcher is [`uvx`](https://docs.astral.sh/uv/), which clones the package from git at a tag, builds it, and runs the console script in one step — no registry account, no publish step.
 
 ## Quick start
 
@@ -38,7 +38,7 @@ The easiest launcher is [`uvx`](https://docs.astral.sh/uv/), which resolves the 
    Add `.env` and `.hl-mcp/` to the workspace `.gitignore` so secrets and per-workspace settings never get committed.
 3. **Run it** (or let the [plugin](https://github.com/rsantamaria01/hyperliquid-trading-agent) auto-spawn it):
    ```bash
-   uvx hyperliquid-trading-mcp
+   uvx --from git+https://github.com/rsantamaria01/hyperliquid-trading-mcp@v3.0.0 hyperliquid-trading-mcp
    ```
    At startup the server writes a one-line banner to **stderr**, e.g.
    ```
@@ -83,7 +83,8 @@ A fresh workspace starts in **DRY-RUN** (`live_trading: false`). Reopening a wor
 The [plugin](https://github.com/rsantamaria01/hyperliquid-trading-agent) bundles the server config and auto-spawns it via `uvx`. To register it by hand instead:
 
 ```bash
-claude mcp add --scope user hyperliquid-trading-agent -- uvx hyperliquid-trading-mcp
+claude mcp add --scope user hyperliquid-trading-agent -- \
+  uvx --from git+https://github.com/rsantamaria01/hyperliquid-trading-mcp@v3.0.0 hyperliquid-trading-mcp
 ```
 
 The CLI sets `CLAUDE_PROJECT_DIR` for the spawned process, so the server picks up the workspace `.env` and settings automatically.
