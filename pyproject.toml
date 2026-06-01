@@ -1,12 +1,24 @@
 [project]
 name = "hyperliquid-trading-mcp"
-version = "2.0.0"
-description = "MCP server for Hyperliquid perpetual futures trading. Hard-coded risk guards, leverage enforcement, bracket orders. Inspired by edkdev/hyperliquid-mcp with risk management adapted from sanketagarwal/hyperliquid-trading-agent."
+version = "3.0.0"
+description = "Local stdio MCP server for Hyperliquid perpetual futures trading. Hard-coded risk guards, leverage enforcement, bracket orders. Inspired by edkdev/hyperliquid-mcp with risk management adapted from sanketagarwal/hyperliquid-trading-agent."
 authors = [{ name = "Raul Santamaria" }]
 license = { text = "MIT" }
 readme = "README.md"
 requires-python = ">=3.10"
 keywords = ["hyperliquid", "mcp", "trading", "perp", "futures", "crypto"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Office/Business :: Financial :: Investment",
+]
 dependencies = [
   "mcp>=1.10.0",
   "pydantic>=2.0",
@@ -29,6 +41,7 @@ hyperliquid-trading-mcp = "hyperliquid_trading_mcp.server:main"
 
 [project.urls]
 Homepage = "https://github.com/rsantamaria01/hyperliquid-trading-mcp"
+Repository = "https://github.com/rsantamaria01/hyperliquid-trading-mcp"
 Issues = "https://github.com/rsantamaria01/hyperliquid-trading-mcp/issues"
 "Inspired by" = "https://github.com/edkdev/hyperliquid-mcp"
 
