@@ -1,60 +1,57 @@
-"""Hyperliquid Trading MCP server — HTTP entrypoint.
+"""Hyperliquid Trading MCP server — local stdio entrypoint.
 
 The FastMCP instance and shared helpers live in `app.py`; the tools live under
 `tools/`. Importing the `tools` package here registers every `@mcp.tool()` on
 the instance before the server starts.
 
-Secrets come from env: HYPERLIQUID_PRIVATE_KEY + HYPERLIQUID_VAULT_ADDRESS
-(optionally HYPERLIQUID_NETWORK / HYPERLIQUID_SETTINGS_PATH). All runtime config
-(risk caps, LIVE_TRADING, network) lives in a persistent JSON file the MCP
-exposes via settings tools.
+Secrets come from a per-workspace `.env`: HYPERLIQUID_PRIVATE_KEY +
+HYPERLIQUID_VAULT_ADDRESS (optionally HYPERLIQUID_NETWORK /
+HYPERLIQUID_SETTINGS_PATH). `.env` is loaded from `CLAUDE_PROJECT_DIR` (the
+workspace Claude spawns the server in) at the very top of this module — before
+`settings.py` and the client read any env — so a workspace can override keys and
+the settings-file location. All runtime config (risk caps, live_trading,
+network) lives in a per-workspace JSON file (default
+`CLAUDE_PROJECT_DIR/.hl-mcp/settings.json`) the MCP exposes via settings tools.
 
-One transport: Streamable HTTP at `/mcp`, served by uvicorn — this runs like an
-HTTP API server, only as a container, reachable at `<host-ip>:8000`. Optional
-`MCP_AUTH_TOKEN` gates `/mcp` behind a bearer token; `/health` is always open
-for container/proxy liveness checks. Host/port default to 0.0.0.0:8000,
-overridable via `MCP_HTTP_HOST` / `MCP_HTTP_PORT`.
+One transport: **local stdio** via `mcp.run()`. Claude spawns the server as a
+subprocess (e.g. `uvx hyperliquid-trading-mcp`); there is no network port, no
+HTTP, and no auth — the workspace boundary is the access boundary. At startup
+the server writes a workspace-path + LIVE/DRY-RUN banner to **stderr** (never
+stdout, which is the MCP stdio channel and must stay clean).
 """
 
 from __future__ import annotations
 
 import os
+import sys
 
-import uvicorn
-from mcp.server.transport_security import TransportSecuritySettings
-from starlette.responses import PlainTextResponse
-from starlette.routing import Route
+from dotenv import load_dotenv
 
-from . import tools  # noqa: F401 — import registers all @mcp.tool()s on `mcp`
-from .app import mcp
-from .auth import BearerAuthMiddleware
+# Load the workspace `.env` BEFORE importing tools/app: settings.py reads
+# HYPERLIQUID_SETTINGS_PATH (and its workspace default) at import time, and the
+# client reads keys lazily — loading `.env` first makes any workspace override
+# effective and keeps key resolution correct.
+_PROJECT_DIR = os.getenv("CLAUDE_PROJECT_DIR") or "."
+load_dotenv(os.path.join(_PROJECT_DIR, ".env"))
+
+from . import tools  # noqa: E402,F401 — import registers all @mcp.tool()s on `mcp`
+from .app import _mode_tag, mcp  # noqa: E402
 
 
 def main() -> None:
-    """Serve the MCP server over Streamable HTTP at /mcp."""
-    host = os.getenv("MCP_HTTP_HOST") or "0.0.0.0"
-    port = int(os.getenv("MCP_HTTP_PORT") or "8000")
-    mcp.settings.host = host
-    mcp.settings.port = port
+    """Serve the MCP server over local stdio.
 
-    # Reached directly at <host-ip>:8000, so turn off the SDK's localhost-only
-    # DNS-rebinding Host guard (it 421s any non-localhost Host). Access control
-    # is the bearer token (MCP_AUTH_TOKEN) plus network/proxy controls.
-    ts = mcp.settings.transport_security or TransportSecuritySettings()
-    ts.enable_dns_rebinding_protection = False
-    mcp.settings.transport_security = ts
-
-    app = mcp.streamable_http_app()
-    # Unauthenticated liveness endpoint — never needs the auth token.
-    app.router.routes.append(
-        Route("/health", lambda _req: PlainTextResponse("ok"), methods=["GET"])
+    Emits a workspace-path + LIVE/DRY-RUN banner to stderr, then hands the
+    process to `mcp.run()` (stdio transport). stdout is reserved for the MCP
+    protocol stream and must not be written to here.
+    """
+    workspace = os.path.abspath(_PROJECT_DIR)
+    print(
+        f"hyperliquid-trading-mcp [{_mode_tag()}] — workspace: {workspace}",
+        file=sys.stderr,
+        flush=True,
     )
-
-    token = (os.getenv("MCP_AUTH_TOKEN") or "").strip()
-    if token:
-        app = BearerAuthMiddleware(app, token, exempt_paths={"/health"})
-
-    uvicorn.run(app, host=host, port=port, log_level=mcp.settings.log_level.lower())
+    mcp.run()
 
 
 if __name__ == "__main__":
