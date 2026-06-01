@@ -1,18 +1,13 @@
 name: Release
 
-# Build and publish the Docker image to GitHub Container Registry on a pushed
-# version tag (e.g. v0.3.0).
+# Publish the package to PyPI on a pushed version tag (e.g. v3.0.0).
 on:
   push:
     tags: ["v*.*.*"]
 
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
-
 jobs:
   # Gate the publish on lint + tests passing for the tagged commit, so a tag on
-  # a broken commit never publishes a broken :latest image.
+  # a broken commit never publishes a broken release to PyPI.
   test:
     runs-on: ubuntu-latest
     steps:
@@ -26,44 +21,23 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run pytest -q
 
-  build-and-push:
+  build-and-publish:
     needs: test
     runs-on: ubuntu-latest
+    environment: pypi
     permissions:
-      contents: read
-      packages: write # required to push to ghcr.io
+      id-token: write # required for PyPI Trusted Publishing (OIDC)
     steps:
       - uses: actions/checkout@v5
-
-      # docker-container driver — required for the GHA build cache below
-      # (the default docker driver does not support cache export).
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+      - uses: astral-sh/setup-uv@v8.1.0
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }} # built-in token, no PAT needed
+          enable-cache: true
+          python-version: "3.12"
 
-      - name: Derive image tags
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest
+      - name: Build sdist + wheel
+        run: uv build
 
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      # Trusted Publishing (OIDC) — no stored token. The PyPI project must
+      # register this repo + workflow (release.yml) as a trusted publisher.
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
