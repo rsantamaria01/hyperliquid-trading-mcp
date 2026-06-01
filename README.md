@@ -27,17 +27,11 @@ cp .env.example .env
 docker compose build
 ```
 
-To smoke-test that it boots and registers tools:
+To smoke-test that it boots:
 
 ```bash
-docker compose run --rm mcp
-# you should see MCP protocol handshake bytes; Ctrl-C to exit
-```
-
-To keep a long-lived container running for fast attach:
-
-```bash
-docker compose up -d mcp-daemon
+docker compose up -d
+curl -sf http://localhost:8000/health   # "ok" = serving
 ```
 
 ## Quick start — Python (uv)
@@ -46,7 +40,7 @@ This project is managed with [uv](https://docs.astral.sh/uv/). Dependencies are 
 
 ```bash
 uv sync                          # create .venv from the lockfile
-uv run hyperliquid-trading-mcp   # run the server from source
+uv run hyperliquid-trading-mcp   # serves Streamable HTTP on :8000 (default)
 
 # Dev tooling (tests, lint) comes from the dev dependency group:
 uv run pytest
@@ -70,7 +64,7 @@ All other config (risk caps, `live_trading`, network) lives in `/data/settings.j
 
 ## Connecting from an MCP client
 
-The server speaks **HTTP/SSE on `http://localhost:8000/sse`**. Add it to your MCP client config:
+The server speaks **Streamable HTTP on `http://localhost:8000/mcp`**. Add it to your MCP client config:
 
 ### Claude Code / Cowork plugin
 
@@ -80,7 +74,7 @@ In `plugin.json`:
 {
   "mcpServers": {
     "hyperliquid-trading": {
-      "url": "http://localhost:8000/sse"
+      "url": "http://localhost:8000/mcp"
     }
   }
 }
@@ -94,39 +88,13 @@ Edit `~/.config/Claude/claude_desktop_config.json`:
 {
   "mcpServers": {
     "hyperliquid-trading": {
-      "url": "http://localhost:8000/sse"
+      "url": "http://localhost:8000/mcp"
     }
   }
 }
 ```
 
 The server already has your keys (from its `.env`) and persistent settings (from the Docker volume), so no `env` block is needed on the client side. Plugin = transport pointer only.
-
-### Stdio fallback (if your client doesn't support SSE URLs)
-
-If your MCP client only accepts stdio servers, override the transport at container start:
-
-```yaml
-# docker-compose.override.yml
-services:
-  mcp:
-    environment:
-      MCP_TRANSPORT: stdio
-    ports: []           # no HTTP port in stdio mode
-```
-
-Then have the client spawn the server via `docker exec`:
-
-```json
-{
-  "mcpServers": {
-    "hyperliquid-trading": {
-      "command": "docker",
-      "args": ["exec", "-i", "hyperliquid-trading-mcp", "hyperliquid-trading-mcp"]
-    }
-  }
-}
-```
 
 ## Tool surface
 

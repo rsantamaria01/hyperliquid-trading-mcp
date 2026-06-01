@@ -6,7 +6,7 @@
 FROM python:3.12-slim AS builder
 
 # Pinned uv binary (bump deliberately for reproducibility).
-COPY --from=ghcr.io/astral-sh/uv:0.11.16 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.11.16 /uv /bin/
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -30,9 +30,6 @@ FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    MCP_TRANSPORT=sse \
-    MCP_HTTP_HOST=0.0.0.0 \
-    MCP_HTTP_PORT=8000 \
     HYPERLIQUID_SETTINGS_PATH=/data/settings.json \
     PATH="/app/.venv/bin:$PATH"
 
