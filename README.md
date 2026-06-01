@@ -1,10 +1,10 @@
 # Hyperliquid Trading MCP
 
-A Model Context Protocol server for trading Hyperliquid perpetual futures. Designed to be consumed by AI clients (Claude Code, Cowork, Claude Desktop, Cursor, any MCP-aware host).
+A Model Context Protocol server for trading Hyperliquid perpetual futures. Runs as a **local stdio subprocess** that an MCP client (Claude Code CLI) spawns on demand — no server to host, no network port, no auth.
 
 > **Forked from** [edkdev/hyperliquid-mcp](https://github.com/edkdev/hyperliquid-mcp). Risk-management layer (position cap, leverage enforcement, mandatory stop-loss, daily drawdown circuit breaker, force-close at max loss) adapted from [sanketagarwal/hyperliquid-trading-agent](https://github.com/sanketagarwal/hyperliquid-trading-agent).
 
-> ⚠️ **Real exchange. Real money.** Not audited. Trade at your own risk. Default mode is dry-run (`LIVE_TRADING=false`).
+> ⚠️ **Real exchange. Real money.** Not audited. Trade at your own risk. Default mode is dry-run (`live_trading: false`).
 
 ## What's different from the upstream
 
@@ -17,84 +17,80 @@ This fork keeps the same MCP-server-for-Hyperliquid shape but adds:
 - **Bracket limit orders**: entry + reduce-only SL trigger + reduce-only TP trigger submitted atomically via `bulk_orders`.
 - **Force-close loop**: `force_close_losing_positions()` for the agent's safety net at every trading-cycle iteration.
 
-## Quick start — Docker (recommended)
+## How it runs
 
-```bash
-git clone https://github.com/rsantamaria01/hyperliquid-trading-mcp.git
-cd hyperliquid-trading-mcp
-cp .env.example .env
-# edit .env with your wallet keys (see Configuration below)
-docker compose build
-```
+The server speaks **local stdio** (`mcp.run()`). The MCP client launches it as a child process — there is no HTTP endpoint, no port, and no token. The boundary is the workspace: the server reads its secrets and settings from the directory the client spawned it in (`CLAUDE_PROJECT_DIR`).
 
-To smoke-test that it boots:
+The easiest launcher is [`uvx`](https://docs.astral.sh/uv/), which resolves the package from PyPI and runs the console script in one step.
 
-```bash
-docker compose up -d
-curl -sf http://localhost:8000/health   # "ok" = serving
-```
+## Quick start
 
-## Quick start — Python (uv)
+1. **Install `uv`** (provides `uvx`):
+   ```bash
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   ```
+2. **Drop a `.env` in your workspace** (the folder you open Claude in) with your wallet keys:
+   ```bash
+   # .env
+   HYPERLIQUID_PRIVATE_KEY=0x...   # agent wallet key (signer only, no funds)
+   HYPERLIQUID_VAULT_ADDRESS=0x... # main wallet address (the funded one)
+   ```
+   Add `.env` and `.hl-mcp/` to the workspace `.gitignore` so secrets and per-workspace settings never get committed.
+3. **Run it** (or let the [plugin](https://github.com/rsantamaria01/hyperliquid-trading-agent) auto-spawn it):
+   ```bash
+   uvx hyperliquid-trading-mcp
+   ```
+   At startup the server writes a one-line banner to **stderr**, e.g.
+   ```
+   hyperliquid-trading-mcp [DRY-RUN] — workspace: /home/you/myworkspace
+   ```
+   `[LIVE]` there means real orders for this workspace. stdout is reserved for the MCP protocol stream.
 
-This project is managed with [uv](https://docs.astral.sh/uv/). Dependencies are pinned in `uv.lock`.
+To develop locally from a checkout:
 
 ```bash
 uv sync                          # create .venv from the lockfile
-uv run hyperliquid-trading-mcp   # serves Streamable HTTP on :8000 (default)
-
-# Dev tooling (tests, lint) comes from the dev dependency group:
-uv run pytest
+uv run hyperliquid-trading-mcp   # runs the stdio server
+uv run pytest                    # offline mocked-SDK suite
 uv run ruff check .
 ```
 
 ## Configuration
 
-Required env vars (in `.env` or your host env):
+### Secrets — workspace `.env` (loaded from `CLAUDE_PROJECT_DIR`)
 
 - `HYPERLIQUID_PRIVATE_KEY` — **agent wallet** private key (signer only, no funds). Create one at app.hyperliquid.xyz → Settings → API Wallets.
 - `HYPERLIQUID_VAULT_ADDRESS` — **main wallet** address (the funded one).
 
-Optional env overrides (otherwise everything below is configured via MCP `update_settings` tool and persisted to the volume):
+The server loads `CLAUDE_PROJECT_DIR/.env` before anything else, so keys live per workspace. **Never paste keys into chat** — put them in the `.env` file on disk.
 
-- `LIVE_TRADING=false` — emergency kill-switch that beats `settings.json`. Useful if the file accidentally has `live_trading: true` and you need to disable it before the next deploy.
+### Runtime settings — per-workspace `.hl-mcp/settings.json`
+
+`live_trading`, `network`, and all risk caps live in `CLAUDE_PROJECT_DIR/.hl-mcp/settings.json` and are editable at runtime via the `update_settings` MCP tool — no restart needed. The file is created on first write. Each workspace keeps its own settings, so `live_trading` is scoped to the folder.
+
+A fresh workspace starts in **DRY-RUN** (`live_trading: false`). Reopening a workspace that was previously LIVE surfaces `[LIVE]` in the startup banner, and the plugin's `trade-cycle` skill still requires an explicit GO/NO confirm before the first live order.
+
+### Optional env overrides
+
+- `LIVE_TRADING=false` — emergency kill-switch that beats `settings.json`.
 - `HYPERLIQUID_NETWORK=testnet` — overrides `settings.network`.
-- `HYPERLIQUID_SETTINGS_PATH=/data/settings.json` — change the settings file location.
-
-All other config (risk caps, `live_trading`, network) lives in `/data/settings.json` and is editable at runtime via the `update_settings` MCP tool. No restart needed.
+- `HYPERLIQUID_SETTINGS_PATH=/path/settings.json` — override the settings file location (otherwise the per-workspace default applies).
 
 ## Connecting from an MCP client
 
-The server speaks **Streamable HTTP on `http://localhost:8000/mcp`**. Add it to your MCP client config:
+### Claude Code CLI (supported)
 
-### Claude Code / Cowork plugin
+The [plugin](https://github.com/rsantamaria01/hyperliquid-trading-agent) bundles the server config and auto-spawns it via `uvx`. To register it by hand instead:
 
-In `plugin.json`:
-
-```json
-{
-  "mcpServers": {
-    "hyperliquid-trading": {
-      "url": "http://localhost:8000/mcp"
-    }
-  }
-}
+```bash
+claude mcp add --scope user hyperliquid-trading-agent -- uvx hyperliquid-trading-mcp
 ```
 
-### Claude Desktop
+The CLI sets `CLAUDE_PROJECT_DIR` for the spawned process, so the server picks up the workspace `.env` and settings automatically.
 
-Edit `~/.config/Claude/claude_desktop_config.json`:
+### GUI clients (untested)
 
-```json
-{
-  "mcpServers": {
-    "hyperliquid-trading": {
-      "url": "http://localhost:8000/mcp"
-    }
-  }
-}
-```
-
-The server already has your keys (from its `.env`) and persistent settings (from the Docker volume), so no `env` block is needed on the client side. Plugin = transport pointer only.
+Desktop/GUI MCP hosts (e.g. Cowork) may not have `uvx`/`npx` on the GUI app's `PATH`, and may not set `CLAUDE_PROJECT_DIR`. If a GUI client can't find `uvx`, point it at an absolute path (`$(which uvx)`) or set `PATH` in the server's `env` block. This path is **untested** — the Claude Code CLI is the supported client.
 
 ## Tool surface
 
@@ -113,7 +109,7 @@ Each order tool reads the live `live_trading` setting. In dry-run it returns a s
 
 ## Related projects
 
-- **Plugin layer for Cowork/Claude Code** with skills, strategies, and slash commands → [rsantamaria01/hyperliquid-trading-agent](https://github.com/rsantamaria01/hyperliquid-trading-agent)
+- **Plugin layer for Claude Code** with skills, strategies, and slash commands → [rsantamaria01/hyperliquid-trading-agent](https://github.com/rsantamaria01/hyperliquid-trading-agent)
 - Upstream MCP server → [edkdev/hyperliquid-mcp](https://github.com/edkdev/hyperliquid-mcp)
 - Original trading loop → [sanketagarwal/hyperliquid-trading-agent](https://github.com/sanketagarwal/hyperliquid-trading-agent)
 
