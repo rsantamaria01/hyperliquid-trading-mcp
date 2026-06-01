@@ -1,6 +1,6 @@
 [project]
 name = "hyperliquid-trading-mcp"
-version = "1.0.0"
+version = "2.0.0"
 description = "MCP server for Hyperliquid perpetual futures trading. Hard-coded risk guards, leverage enforcement, bracket orders. Inspired by edkdev/hyperliquid-mcp with risk management adapted from sanketagarwal/hyperliquid-trading-agent."
 authors = [{ name = "Raul Santamaria" }]
 license = { text = "MIT" }
