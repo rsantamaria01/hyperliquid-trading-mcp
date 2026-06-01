@@ -1,7 +1,10 @@
 """Persistent runtime settings for the MCP server.
 
-Lives in a JSON file at SETTINGS_PATH (default /data/settings.json — backed by
-a Docker named volume so changes survive container restarts).
+Lives in a JSON file at SETTINGS_PATH. The default is per-workspace —
+`CLAUDE_PROJECT_DIR/.hl-mcp/settings.json` (the workspace Claude spawned the
+server in) — so each workspace keeps its own live_trading flag and risk caps.
+`HYPERLIQUID_SETTINGS_PATH` overrides the location. The path is resolved at
+import time, after `server.py` has loaded the workspace `.env`.
 
 Secrets (HYPERLIQUID_PRIVATE_KEY, HYPERLIQUID_VAULT_ADDRESS) are NOT stored here
 — they only come from env. Everything else (risk caps, network, LIVE_TRADING)
@@ -16,7 +19,10 @@ import threading
 from pathlib import Path
 from typing import Any
 
-SETTINGS_PATH = Path(os.getenv("HYPERLIQUID_SETTINGS_PATH") or "/data/settings.json")
+SETTINGS_PATH = Path(
+    os.getenv("HYPERLIQUID_SETTINGS_PATH")
+    or os.path.join(os.getenv("CLAUDE_PROJECT_DIR", "."), ".hl-mcp", "settings.json")
+)
 
 
 DEFAULTS: dict[str, Any] = {

@@ -1,18 +1,14 @@
 name: Release
 
-# Build and publish the Docker image to GitHub Container Registry on a pushed
-# version tag (e.g. v0.3.0).
+# On a pushed version tag (e.g. v3.0.0): gate on lint+tests, build the
+# sdist+wheel, and publish a GitHub Release with those artifacts. The package is
+# installed straight from git (uvx --from git+https://...@<tag>), so no registry
+# publish is needed — the tag is the pin and the Release is the artifact record.
 on:
   push:
     tags: ["v*.*.*"]
 
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
-
 jobs:
-  # Gate the publish on lint + tests passing for the tagged commit, so a tag on
-  # a broken commit never publishes a broken :latest image.
   test:
     runs-on: ubuntu-latest
     steps:
@@ -26,44 +22,34 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run pytest -q
 
-  build-and-push:
+  release:
     needs: test
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      packages: write # required to push to ghcr.io
+      contents: write # create releases + upload assets
     steps:
       - uses: actions/checkout@v5
-
-      # docker-container driver — required for the GHA build cache below
-      # (the default docker driver does not support cache export).
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+      - uses: astral-sh/setup-uv@v8.1.0
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }} # built-in token, no PAT needed
+          enable-cache: true
+          python-version: "3.12"
 
-      - name: Derive image tags
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest
+      - name: Build sdist + wheel
+        run: uv build
 
-      - name: Build and push
-        uses: docker/build-push-action@v6
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
         with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          files: dist/*
+          generate_release_notes: true
+          body: |
+            ## Install
+
+            The plugin spawns this server via `uvx` straight from git — no registry:
+
+            ```
+            uvx --from git+https://github.com/rsantamaria01/hyperliquid-trading-mcp@${{ github.ref_name }} hyperliquid-trading-mcp
+            ```
+
+            Or build locally from the attached wheel. Requires a workspace `.env`
+            with `HYPERLIQUID_PRIVATE_KEY` + `HYPERLIQUID_VAULT_ADDRESS`.

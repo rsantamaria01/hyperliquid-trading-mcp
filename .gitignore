@@ -12,8 +12,8 @@ __pycache__/
 build/
 dist/
 
-# Docker
-.dockerignore
+# Per-workspace settings (when developing inside a workspace)
+.hl-mcp/
 
 # OS
 .DS_Store
