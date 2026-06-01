@@ -26,8 +26,9 @@ _RISK_CAP_KEYS = {
 async def get_settings() -> SettingsResult:
     """Return the current persisted runtime settings (risk caps, trading mode, network).
 
-    Settings live in /data/settings.json by default (Docker named volume) — they
-    survive container restarts. Use update_settings() to change them.
+    Settings live per workspace in CLAUDE_PROJECT_DIR/.hl-mcp/settings.json by
+    default (override with HYPERLIQUID_SETTINGS_PATH). Use update_settings() to
+    change them.
     """
     return SettingsResult(
         settings=settings.load(),
