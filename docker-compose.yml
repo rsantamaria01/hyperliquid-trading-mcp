@@ -12,7 +12,7 @@
 services:
   mcp:
     build: .
-    image: rsantamaria01/hyperliquid-trading-mcp:latest
+    image: ghcr.io/rsantamaria01/hyperliquid-trading-mcp:latest
     container_name: hyperliquid-trading-mcp
     restart: unless-stopped
     ports:
