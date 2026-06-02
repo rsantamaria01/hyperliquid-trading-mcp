@@ -41,8 +41,22 @@ class HyperliquidClient:
         self.account_address = os.getenv("HYPERLIQUID_VAULT_ADDRESS")
         self.query_address = self.account_address or self.wallet.address
 
-        self.info = Info(self.base_url)
-        self.exchange = Exchange(self.wallet, self.base_url, account_address=self.account_address)
+        # SDK 0.20.1's Info/Exchange eagerly build spot asset maps in __init__
+        # (`spot_meta["tokens"][base]`), which raises IndexError against current
+        # Hyperliquid mainnet spot meta — taking the whole client down even
+        # though we only trade perps. Passing an empty spot_meta short-circuits
+        # that loop; perp meta is fetched separately and is unaffected. spot
+        # balances (info.spot_user_state) are a runtime REST call and still work.
+        # skip_ws: we issue REST calls only, never subscribe — avoids a dangling
+        # websocket thread in the stdio subprocess.
+        empty_spot_meta = {"universe": [], "tokens": []}
+        self.info = Info(self.base_url, skip_ws=True, spot_meta=empty_spot_meta)
+        self.exchange = Exchange(
+            self.wallet,
+            self.base_url,
+            account_address=self.account_address,
+            spot_meta=empty_spot_meta,
+        )
 
         self._meta_cache: list | None = None
         self._hip3_meta_cache: dict[str, list] = {}
