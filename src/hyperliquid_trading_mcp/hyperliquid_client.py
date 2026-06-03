@@ -20,6 +20,16 @@ from hyperliquid.utils import constants
 from . import settings
 
 
+def _read_concurrency() -> int:
+    """Max concurrent read requests to the exchange. Bounded to avoid self-
+    inflicted rate-limits under bursty fan-out; override via env."""
+    try:
+        n = int(os.getenv("HL_READ_CONCURRENCY", "5"))
+        return max(1, n)
+    except (TypeError, ValueError):
+        return 5
+
+
 class HyperliquidClient:
     def __init__(self) -> None:
         priv = os.getenv("HYPERLIQUID_PRIVATE_KEY")
@@ -60,22 +70,52 @@ class HyperliquidClient:
 
         self._meta_cache: list | None = None
         self._hip3_meta_cache: dict[str, list] = {}
+        # Resilience for bursty read fan-out (e.g. a trade-loop tick firing many
+        # get_market_context calls at once): bound concurrent read requests so we
+        # don't self-inflict 429/502s, and serialize the lazy meta fetch so N
+        # concurrent callers don't stampede the metaAndAssetCtxs endpoint.
+        self._read_sem = asyncio.Semaphore(_read_concurrency())
+        self._meta_lock = asyncio.Lock()
 
     async def _run(self, fn, *args, **kwargs):
+        """Run an SDK call in a worker thread. No retry — safe for mutating calls
+        (orders); a blind retry there could double-fill."""
         return await asyncio.to_thread(fn, *args, **kwargs)
+
+    async def _run_read(self, fn, *args, retries: int = 4, base_delay: float = 0.4, **kwargs):
+        """Run a READ-ONLY SDK call with bounded concurrency + backoff retry.
+
+        Transient upstream failures (rate-limit 429, gateway 502, and the SDK's
+        own `IndexError` when it parses a truncated/error body) are retried with
+        exponential backoff. Use only for idempotent reads — never for orders.
+        """
+        last: Exception | None = None
+        for attempt in range(retries):
+            try:
+                async with self._read_sem:
+                    return await asyncio.to_thread(fn, *args, **kwargs)
+            except Exception as e:  # noqa: BLE001 — upstream raises bare IndexError/HTTP errors
+                last = e
+                if attempt == retries - 1:
+                    break
+                await asyncio.sleep(base_delay * (2**attempt))
+        raise last  # type: ignore[misc]
 
     # ------ metadata / sizing ------
     async def _meta_for(self, asset: str):
         if ":" in asset:
             dex = asset.split(":")[0]
             if dex not in self._hip3_meta_cache:
-                data = await self._run(
-                    self.info.post, "/info", {"type": "metaAndAssetCtxs", "dex": dex}
-                )
-                self._hip3_meta_cache[dex] = data
+                async with self._meta_lock:  # serialize: don't stampede the endpoint
+                    if dex not in self._hip3_meta_cache:
+                        self._hip3_meta_cache[dex] = await self._run_read(
+                            self.info.post, "/info", {"type": "metaAndAssetCtxs", "dex": dex}
+                        )
             return self._hip3_meta_cache.get(dex)
         if not self._meta_cache:
-            self._meta_cache = await self._run(self.info.meta_and_asset_ctxs)
+            async with self._meta_lock:
+                if not self._meta_cache:  # double-checked: first caller fills, rest reuse
+                    self._meta_cache = await self._run_read(self.info.meta_and_asset_ctxs)
         return self._meta_cache
 
     async def round_size(self, asset: str, amount: float) -> float:
@@ -132,12 +172,17 @@ class HyperliquidClient:
 
     # ------ price / market data ------
     async def get_current_price(self, asset: str) -> float:
-        if ":" in asset:
-            dex = asset.split(":")[0]
-            mids = await self._run(self.info.post, "/info", {"type": "allMids", "dex": dex})
-        else:
-            mids = await self._run(self.info.all_mids)
-        return float(mids.get(asset, 0.0))
+        try:
+            if ":" in asset:
+                dex = asset.split(":")[0]
+                mids = await self._run_read(
+                    self.info.post, "/info", {"type": "allMids", "dex": dex}
+                )
+            else:
+                mids = await self._run_read(self.info.all_mids)
+        except Exception:  # noqa: BLE001 — degrade instead of crashing the tool
+            return 0.0
+        return float(mids.get(asset, 0.0)) if isinstance(mids, dict) else 0.0
 
     async def get_candles(self, asset: str, interval: str = "5m", count: int = 100) -> list[dict]:
         interval_ms = {
@@ -157,22 +202,27 @@ class HyperliquidClient:
         }.get(interval, 300_000)
         end = int(time.time() * 1000)
         start = end - count * interval_ms
-        if ":" in asset:
-            raw = await self._run(
-                self.info.post,
-                "/info",
-                {
-                    "type": "candleSnapshot",
-                    "req": {
-                        "coin": asset,
-                        "interval": interval,
-                        "startTime": start,
-                        "endTime": end,
+        try:
+            if ":" in asset:
+                raw = await self._run_read(
+                    self.info.post,
+                    "/info",
+                    {
+                        "type": "candleSnapshot",
+                        "req": {
+                            "coin": asset,
+                            "interval": interval,
+                            "startTime": start,
+                            "endTime": end,
+                        },
                     },
-                },
-            )
-        else:
-            raw = await self._run(self.info.candles_snapshot, asset, interval, start, end)
+                )
+            else:
+                raw = await self._run_read(self.info.candles_snapshot, asset, interval, start, end)
+        except Exception:  # noqa: BLE001 — degrade to "no candles" so analysis HOLDs, not crashes
+            return []
+        if not isinstance(raw, list):
+            return []
         return [
             {
                 "t": c.get("t"),
