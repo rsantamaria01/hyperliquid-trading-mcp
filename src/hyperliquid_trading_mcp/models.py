@@ -189,3 +189,19 @@ class ServerTime(BaseModel):
     rtt_ms: float | None = None
     meta_ok: bool | None = None
     error: str | None = None
+
+
+class LogAppendResult(BaseModel):
+    status: str  # "ok" | "error"
+    path: str | None = None  # absolute path of the workspace log written
+    lines: int | None = None  # total line count after the append
+    error: str | None = None
+
+
+class LogTailResult(BaseModel):
+    status: str  # "ok" | "error"
+    path: str | None = None
+    count: int | None = None  # number of events returned
+    max_iteration_id: int | None = None  # highest iteration_id seen (for the next tick)
+    events: list[dict[str, Any]] = []  # most-recent events, oldest-first
+    error: str | None = None
