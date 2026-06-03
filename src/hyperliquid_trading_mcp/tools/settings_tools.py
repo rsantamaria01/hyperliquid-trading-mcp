@@ -44,18 +44,22 @@ async def update_settings(updates: dict[str, Any]) -> SettingsResult:
     Editable keys: live_trading (bool), network ("mainnet"|"testnet"),
     max_position_pct, max_loss_per_position_pct, max_leverage,
     max_total_exposure_pct, daily_loss_circuit_breaker_pct, mandatory_sl_pct,
-    max_concurrent_positions, min_balance_reserve_pct.
+    max_concurrent_positions, min_balance_reserve_pct,
+    read_concurrency (int — max simultaneous read requests to the exchange;
+    lower it, e.g. 3, if a heavy trade-loop fan-out hits rate-limits/502s).
 
     Example: update_settings({"live_trading": true, "max_leverage": 5})
 
-    Changing `network` rebuilds the client immediately (no restart needed).
+    Changing `network` or `read_concurrency` rebuilds the client immediately
+    (no restart needed).
     Changing a risk cap rebuilds the risk manager so stale circuit-breaker /
     daily-high state never outlives the configuration that produced it.
     """
     try:
         new = settings.update(updates)
-        # Reset cached client if network changed (the SDK base_url is baked in)
-        if "network" in updates:
+        # Reset cached client if network changed (SDK base_url is baked in) or
+        # read_concurrency changed (the read semaphore is sized at client build)
+        if "network" in updates or "read_concurrency" in updates:
             reset_client()
         # Reset cached risk manager if any risk cap changed
         if _RISK_CAP_KEYS.intersection(updates):

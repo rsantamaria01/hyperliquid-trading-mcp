@@ -38,6 +38,8 @@ DEFAULTS: dict[str, Any] = {
     "mandatory_sl_pct": 5.0,
     "max_concurrent_positions": 10,
     "min_balance_reserve_pct": 20.0,
+    # Networking
+    "read_concurrency": 5,  # max simultaneous read requests to the exchange (bursty fan-out guard)
 }
 
 # Settings the user is allowed to change via update_settings.
@@ -55,6 +57,7 @@ TYPES: dict[str, type] = {
     "mandatory_sl_pct": float,
     "max_concurrent_positions": int,
     "min_balance_reserve_pct": float,
+    "read_concurrency": int,
 }
 
 
