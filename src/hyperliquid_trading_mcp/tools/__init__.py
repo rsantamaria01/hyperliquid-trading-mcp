@@ -7,6 +7,6 @@ populate the server's tool surface.
 
 from __future__ import annotations
 
-from . import account, market, meta, orders, risk, settings_tools  # noqa: F401
+from . import account, log, market, meta, orders, risk, settings_tools  # noqa: F401
 
-__all__ = ["account", "market", "meta", "orders", "risk", "settings_tools"]
+__all__ = ["account", "log", "market", "meta", "orders", "risk", "settings_tools"]
