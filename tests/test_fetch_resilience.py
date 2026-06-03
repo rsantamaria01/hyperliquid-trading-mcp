@@ -93,3 +93,15 @@ async def test_meta_fetched_once_under_concurrency():
     results = await asyncio.gather(*[c._meta_for("BTC") for _ in range(20)])
     assert calls["n"] == 1
     assert all(r is results[0] for r in results)
+
+
+def test_read_concurrency_is_a_setting():
+    """read_concurrency is a persistent setting (not an env var), editable like
+    the risk caps, and the client helper reads it."""
+    from hyperliquid_trading_mcp import settings
+    from hyperliquid_trading_mcp.hyperliquid_client import _read_concurrency
+
+    assert "read_concurrency" in settings.EDITABLE
+    assert _read_concurrency() == 5  # default
+    settings.update({"read_concurrency": 3})
+    assert _read_concurrency() == 3

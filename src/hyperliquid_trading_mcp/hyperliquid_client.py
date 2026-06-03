@@ -22,10 +22,11 @@ from . import settings
 
 def _read_concurrency() -> int:
     """Max concurrent read requests to the exchange. Bounded to avoid self-
-    inflicted rate-limits under bursty fan-out; override via env."""
+    inflicted rate-limits under bursty fan-out. A persistent setting
+    (`read_concurrency`), changed via update_settings like the risk caps —
+    takes effect when the client is next built (network change / restart)."""
     try:
-        n = int(os.getenv("HL_READ_CONCURRENCY", "5"))
-        return max(1, n)
+        return max(1, int(settings.get("read_concurrency")))
     except (TypeError, ValueError):
         return 5
 
