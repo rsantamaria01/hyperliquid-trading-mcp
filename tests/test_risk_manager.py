@@ -1,16 +1,20 @@
 """Risk-manager guard tests. Caps come from settings defaults (isolated by the
-hermetic_settings fixture): max_position_pct=10, max_leverage=10,
-max_total_exposure_pct=50, daily_loss_circuit_breaker_pct=10,
-mandatory_sl_pct=5, max_concurrent_positions=10, min_balance_reserve_pct=20."""
+hermetic_settings fixture): max_position_pct=25, max_leverage=10,
+max_total_exposure_pct=75, daily_loss_circuit_breaker_pct=40,
+max_loss_per_position_pct=60, mandatory_sl_pct=50, max_concurrent_positions=10,
+min_balance_reserve_pct=20. Tests asserting a specific cap pin it via
+settings.update so they stay independent of default-value changes."""
 
 from __future__ import annotations
 
+from hyperliquid_trading_mcp import settings
 from hyperliquid_trading_mcp.risk_manager import RiskManager
 
 STATE = {"balance": 1000.0, "total_value": 1000.0, "positions": []}
 
 
 def test_validate_trade_happy_path_sets_mandatory_sl():
+    settings.update({"mandatory_sl_pct": 5.0})
     rm = RiskManager()
     trade = {"asset": "BTC", "action": "buy", "allocation_usd": 50.0, "current_price": 100.0}
     ok, reason, adjusted = rm.validate_trade(trade, STATE)
@@ -36,6 +40,7 @@ def test_min_allocation_bumped_to_eleven():
 
 
 def test_allocation_over_cap_is_capped_not_rejected():
+    settings.update({"max_position_pct": 10.0})
     rm = RiskManager()
     # cap = 10% of 1000 = 100; ask for 500 -> capped to 100, still passes leverage
     ok, _, adjusted = rm.validate_trade(
@@ -67,6 +72,7 @@ def test_hold_is_allowed_noop():
 
 
 def test_daily_drawdown_trips_circuit_breaker():
+    settings.update({"daily_loss_circuit_breaker_pct": 10.0})
     rm = RiskManager()
     rm.check_daily_drawdown(1000.0)  # establishes daily high
     ok, reason = rm.check_daily_drawdown(889.0)  # ~11.1% drawdown > 10%
@@ -99,6 +105,7 @@ def test_concurrent_position_cap_rejects():
 
 
 def test_total_exposure_cap_rejects():
+    settings.update({"max_total_exposure_pct": 50.0})
     rm = RiskManager()
     # existing exposure 480 (one position), cap = 50% of 1000 = 500, new 50 -> 530 > 500
     positions = [{"szi": 4.8, "entryPx": 100.0}]
@@ -110,6 +117,7 @@ def test_total_exposure_cap_rejects():
 
 
 def test_enforce_stop_loss_directions():
+    settings.update({"mandatory_sl_pct": 5.0})
     rm = RiskManager()
     assert rm.enforce_stop_loss(None, 100.0, is_buy=True) == 95.0
     assert rm.enforce_stop_loss(None, 100.0, is_buy=False) == 105.0
@@ -117,6 +125,7 @@ def test_enforce_stop_loss_directions():
 
 
 def test_check_losing_positions_flags_over_threshold():
+    settings.update({"max_loss_per_position_pct": 20.0})
     rm = RiskManager()
     # notional 100*1 = 100; pnl -25 -> 25% loss >= 20% threshold
     positions = [{"coin": "BTC", "entryPx": 100.0, "szi": 1.0, "pnl": -25.0}]

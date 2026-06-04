@@ -61,6 +61,7 @@ async def test_live_sdk_error_returns_structured_error(live):
 
 
 async def test_force_close_continues_after_one_failure(live):
+    settings.update({"max_loss_per_position_pct": 20.0})  # positions 30% down must be flagged
     live.get_user_state.return_value = {
         "balance": 1000.0,
         "total_value": 900.0,

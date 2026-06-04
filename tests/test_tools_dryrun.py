@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from hyperliquid_trading_mcp import settings
 from hyperliquid_trading_mcp.models import (
     AccountState,
     CandlesResult,
@@ -73,6 +74,7 @@ async def test_get_settings_returns_model(fake_client):
 
 
 async def test_validate_trade_allows_in_cap_trade(fake_client):
+    settings.update({"mandatory_sl_pct": 5.0})
     out = await risk.validate_trade("BTC", "long", 50.0)
     assert isinstance(out, ValidateTradeResult)
     assert out.allowed and out.action_canonical == "buy"
@@ -138,6 +140,7 @@ async def test_set_leverage_dry_run(fake_client):
 
 
 async def test_force_close_losing_positions_dry_run(fake_client):
+    settings.update({"max_loss_per_position_pct": 20.0})
     # a position 25% underwater (> 20% max_loss threshold) should be targeted
     fake_client.get_user_state.return_value = {
         "balance": 1000.0,
