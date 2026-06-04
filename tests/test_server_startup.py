@@ -30,6 +30,8 @@ def test_banner_goes_to_stderr_with_workspace_and_mode(monkeypatch, tmp_path, ca
     assert out.out == ""  # stdout stays clean for the MCP protocol
     assert os.path.abspath(str(tmp_path)) in out.err
     assert "DRY-RUN" in out.err
+    # version is on the banner so a stale spawned build is visible at a glance
+    assert server._server_version() in out.err
 
 
 def test_banner_shows_live_when_enabled(monkeypatch, capsys):

@@ -35,7 +35,7 @@ _PROJECT_DIR = os.getenv("CLAUDE_PROJECT_DIR") or "."
 load_dotenv(os.path.join(_PROJECT_DIR, ".env"))
 
 from . import tools  # noqa: E402,F401 — import registers all @mcp.tool()s on `mcp`
-from .app import _mode_tag, mcp  # noqa: E402
+from .app import _mode_tag, _server_version, mcp  # noqa: E402
 
 
 def main() -> None:
@@ -47,7 +47,7 @@ def main() -> None:
     """
     workspace = os.path.abspath(_PROJECT_DIR)
     print(
-        f"hyperliquid-trading-mcp [{_mode_tag()}] — workspace: {workspace}",
+        f"hyperliquid-trading-mcp v{_server_version()} [{_mode_tag()}] — workspace: {workspace}",
         file=sys.stderr,
         flush=True,
     )

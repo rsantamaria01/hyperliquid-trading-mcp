@@ -180,6 +180,7 @@ class TradingMode(BaseModel):
     account_address: str | None = None
     live_trading: bool | None = None
     settings_path: str | None = None
+    version: str | None = None  # running server build — surfaces stale spawns
     error: str | None = None
 
 
@@ -188,6 +189,7 @@ class ServerTime(BaseModel):
     local_ms: int | None = None
     rtt_ms: float | None = None
     meta_ok: bool | None = None
+    version: str | None = None  # running server build — surfaces stale spawns
     error: str | None = None
 
 

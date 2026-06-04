@@ -23,6 +23,22 @@ _client: HyperliquidClient | None = None
 _risk: RiskManager | None = None
 
 
+def _server_version() -> str:
+    """Installed package version, for the startup banner and health probes.
+
+    A stale uvx build silently shipping pre-fix code (the SDK spot-meta
+    IndexError) is invisible unless the running version is surfaced — so this
+    backs both the banner and the get_server_time / trading_mode payloads.
+    Falls back to "unknown" if metadata is unavailable (e.g. a bare source run).
+    """
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version("hyperliquid-trading-mcp")
+    except PackageNotFoundError:
+        return "unknown"
+
+
 def _truthy(v: Any) -> bool:
     if isinstance(v, bool):
         return v
