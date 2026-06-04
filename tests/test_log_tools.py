@@ -13,7 +13,9 @@ from hyperliquid_trading_mcp.tools.log import append_log, get_log
 
 async def test_append_writes_to_workspace_and_counts(tmp_path, monkeypatch):
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
-    r = await append_log({"iteration_id": 1, "session_id": "s1", "crypto": "BTC", "decision": "hold"})
+    r = await append_log(
+        {"iteration_id": 1, "session_id": "s1", "crypto": "BTC", "decision": "hold"}
+    )
     assert r.status == "ok"
     assert r.lines == 1
     assert r.path == str((tmp_path / "log.jsonl").resolve())

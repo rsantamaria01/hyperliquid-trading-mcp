@@ -262,7 +262,14 @@ class HyperliquidClient:
     async def get_user_state(self) -> dict:
         state = await self._run(self.info.user_state, self.query_address)
         positions = state.get("assetPositions", [])
-        total_value = float(state.get("accountValue", 0.0))
+        # True account equity lives under marginSummary/crossMarginSummary —
+        # never top-level. It stays correct right after a fill, unlike the
+        # top-level `withdrawable` (free collateral), which Hyperliquid
+        # transiently computes to ~0 while margin settles post-fill. Reading
+        # `withdrawable` for `balance` was the zero-balance bug: a funded
+        # account briefly reported ~$0 equity with an open position.
+        summary = state.get("marginSummary") or state.get("crossMarginSummary") or {}
+        total_value = float(summary.get("accountValue", 0.0) or 0.0)
         enriched = []
         for w in positions:
             pos = w["position"]
@@ -276,8 +283,11 @@ class HyperliquidClient:
             pos["notional_entry"] = abs(size) * entry
             pos["side"] = side
             enriched.append(pos)
-        balance = float(state.get("withdrawable", 0.0))
-        if balance == 0 and total_value == 0:
+        # balance == account equity (margin math wants equity, not free
+        # collateral, and equity never collapses below locked margin).
+        balance = total_value
+        # Spot-only / empty-perp fallback: no perp equity reported.
+        if total_value == 0:
             try:
                 spot = await self._run(self.info.spot_user_state, self.query_address)
                 for b in spot.get("balances", []):
@@ -287,8 +297,6 @@ class HyperliquidClient:
                         break
             except Exception:
                 pass
-        if not total_value:
-            total_value = balance + sum(max(p.get("pnl", 0.0), 0.0) for p in enriched)
         return {
             "balance": round(balance, 4),
             "total_value": round(total_value, 4),
